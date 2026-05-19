@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rhythmias</title>
+    <link rel="stylesheet" href="style.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Noto+Sans+JP:wght@400;700&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <div id="game-container">
+        <!-- 背景エフェクト -->
+        <div class="bg-effect"></div>
+
+        <!-- プレイエリア -->
+        <div id="play-area">
+            <!-- ポーズボタン -->
+            <button id="pause-btn-ui" title="Pause (ESC)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="14" y="4" width="4" height="16" rx="1" />
+                    <rect x="6" y="4" width="4" height="16" rx="1" />
+                </svg>
+            </button>
+
+            <!-- プログレスバー -->
+            <div id="progress-container">
+                <div id="progress-bar"></div>
+                <div id="time-remaining">00:00</div>
+            </div>
+
+            <!-- UI -->
+            <div id="ui-layer">
+                <div id="score-box">
+                    <div class="label">SCORE</div>
+                    <div id="score">0</div>
+                </div>
+                <div id="combo-box" class="hidden">
+                    <div id="combo">0</div>
+                    <div id="combo-text">COMBO</div>
+                </div>
+            </div>
+            <div class="lane" id="lane-0" data-key="D">
+                <div class="key-label">D</div>
+                <div class="hit-zone"></div>
+            </div>
+            <div class="lane" id="lane-1" data-key="F">
+                <div class="key-label">F</div>
+                <div class="hit-zone"></div>
+            </div>
+            <div class="lane" id="lane-2" data-key="J">
+                <div class="key-label">J</div>
+                <div class="hit-zone"></div>
+            </div>
+            <div class="lane" id="lane-3" data-key="K">
+                <div class="key-label">K</div>
+                <div class="hit-zone"></div>
+            </div>
+
+            <div id="judgment-line"></div>
+            <div id="notes-container"></div>
+
+            <!-- 判定テキスト (PERFECT, GREAT, MISS) -->
+            <div id="judgment-text"></div>
+        </div>
+
+        <!-- スタート画面 -->
+        <div id="start-screen">
+            <h1>Rhythmias</h1>
+            <p>※音源ファイル（.mp3, .wavなど）を選択してください。</p>
+            <input type="file" id="audio-upload" accept="audio/*">
+            <label for="audio-upload" class="custom-file-upload">
+                音源を選択
+            </label>
+            <div id="selected-file-name">未選択</div>
+
+            <!-- 一時的に難易度選択をコメントアウト
+            <div class="difficulty-select">
+                <label><input type="radio" name="difficulty" value="normal" checked> NORMAL</label>
+                <label><input type="radio" name="difficulty" value="hard"> HARD</label>
+                <label><input type="radio" name="difficulty" value="test"> TEST</label>
+            </div>
+            -->
+
+            <div class="difficulty-select" id="lane-select">
+                <label><input type="radio" name="lanes" value="4" checked> 4 LANES</label>
+                <label><input type="radio" name="lanes" value="2"> 2 LANES</label>
+            </div>
+
+            <button id="start-btn" disabled>PLEASE SELECT AUDIO</button>
+            <p class="instructions">Keys: D, F, J, K</p>
+            <p style="font-size: 0.9rem; color: #888; margin-top: 10px;">※ゲーム中にESCキーを押すと一時停止することができます。</p>
+        </div>
+
+        <!-- リザルト画面 -->
+        <div id="result-screen" class="hidden">
+            <h2>RESULT</h2>
+            <div class="result-stats">
+                <div>SCORE: <span id="result-score">0</span></div>
+                <div>MAX COMBO: <span id="result-max-combo">0</span></div>
+                <div>PERFECT: <span id="result-perfect">0</span></div>
+                <div>GREAT: <span id="result-great">0</span></div>
+                <div>MISS: <span id="result-miss">0</span></div>
+            </div>
+            <button id="restart-btn">BACK TO TITLE</button>
+        </div>
+
+        <!-- ポーズ画面 -->
+        <div id="pause-screen" class="hidden">
+            <h2>PAUSE</h2>
+            <div class="volume-control">
+                <label for="volume-slider">VOLUME</label>
+                <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.25">
+            </div>
+            <div class="offset-control">
+                <div class="label">JUDGMENT OFFSET</div>
+                <div class="offset-buttons">
+                    <button id="offset-down-btn">-</button>
+                    <span id="offset-value">120</span>
+                    <button id="offset-up-btn">+</button>
+                </div>
+                <p style="font-size: 0.8rem; margin: 5px 0 0; color: #888;">※プレイ中も上下キー(↑/↓)で調整可能</p>
+            </div>
+            <button id="resume-btn">RESUME</button>
+            <button id="title-btn" style="margin-top: 20px;">BACK TO TITLE</button>
+        </div>
+    </div>
+
+    <audio id="bgm"></audio>
+
+    <script src="script.js?v=2"></script>
+</body>
+
+</html>
