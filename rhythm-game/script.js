@@ -123,6 +123,7 @@ difficultyRadios.forEach(radio => {
 // オーディオ解析と自動譜面生成
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let audioAnalysisDone = false;
+let isAnalyzing = false;
 
 async function analyzeAudioAndGenerateBeatmap(url, difficulty = 'normal') {
     if (difficulty === 'test') {
@@ -132,7 +133,14 @@ async function analyzeAudioAndGenerateBeatmap(url, difficulty = 'normal') {
     try {
         const response = await fetch(url);
         const arrayBuffer = await response.arrayBuffer();
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        
+        // Safariの古いバージョン等に配慮したdecodeAudioDataのラッパー
+        const audioBuffer = await new Promise((resolve, reject) => {
+            const decodePromise = audioCtx.decodeAudioData(arrayBuffer, resolve, reject);
+            if (decodePromise) { // モダンブラウザでPromiseを返す場合
+                decodePromise.catch(reject);
+            }
+        });
 
         const channelData = audioBuffer.getChannelData(0); // モノラル解析
         const sampleRate = audioBuffer.sampleRate;
@@ -285,18 +293,41 @@ async function analyzeAudioAndGenerateBeatmap(url, difficulty = 'normal') {
     }
 }
 
-// オーディオのロード状態の監視
-bgm.addEventListener('canplaythrough', async () => {
-    if (!audioAnalysisDone) {
-        startBtn.textContent = 'ANALYZING...';
-        startBtn.disabled = true;
-        beatmap = await analyzeAudioAndGenerateBeatmap(bgm.src, currentDifficulty);
-        beatmap.sort((a, b) => a.time - b.time);
-        audioAnalysisDone = true;
+// 解析の共通ラッパー
+async function handleAudioLoad(url) {
+    if (audioAnalysisDone || isAnalyzing) return;
+    isAnalyzing = true;
+
+    startBtn.textContent = 'ANALYZING...';
+    startBtn.disabled = true;
+
+    // スマホSafari対策: AudioContextがsuspendedの場合はresume
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(e => console.warn(e));
     }
+
+    beatmap = await analyzeAudioAndGenerateBeatmap(url, currentDifficulty);
+    beatmap.sort((a, b) => a.time - b.time);
+    
+    audioAnalysisDone = true;
+    isAnalyzing = false;
+    
     startBtn.disabled = false;
     startBtn.textContent = 'GAME START';
-});
+}
+
+// デフォルト曲等用：オーディオがロード可能になったら解析
+function checkDefaultAudio() {
+    if (bgm.src && !bgm.src.endsWith('/')) {
+        handleAudioLoad(bgm.src);
+    }
+}
+
+if (bgm.readyState >= 3) { // HAVE_FUTURE_DATA 以上であればすでに読み込み済み
+    checkDefaultAudio();
+} else {
+    bgm.addEventListener('canplaythrough', checkDefaultAudio);
+}
 
 // カスタムファイルアップロードの処理
 audioUpload.addEventListener('change', (e) => {
@@ -305,9 +336,13 @@ audioUpload.addEventListener('change', (e) => {
         selectedFileName.textContent = file.name;
         const objectURL = URL.createObjectURL(file);
         bgm.src = objectURL;
-        startBtn.disabled = true;
-        startBtn.textContent = 'LOADING...';
-        audioAnalysisDone = false; // 再解析フラグ
+        
+        // スマホSafari対策: 明示的にloadを呼ぶ
+        bgm.load(); 
+        
+        audioAnalysisDone = false;
+        // 即座に解析処理を開始
+        handleAudioLoad(objectURL);
     }
 });
 
@@ -401,6 +436,12 @@ function startGame() {
 
     isPaused = false;
     isPlaying = true;
+    
+    // PCやスマホでの自動再生ブロック対策としてここで明示的に再開
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(e => console.warn(e));
+    }
+    
     // 音源の再生
     bgm.currentTime = 0;
     bgm.play().catch(e => {
