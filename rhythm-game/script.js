@@ -629,6 +629,45 @@ window.addEventListener('keyup', (e) => {
     }
 });
 
+// タッチ入力処理（スマホ対応）
+lanes.forEach((laneEl, index) => {
+    // 画面の長押しやスクロールなどデフォルトの動作を防ぐ
+    laneEl.addEventListener('touchstart', (e) => {
+        e.preventDefault(); 
+        if (!isPlaying || isPaused) return;
+
+        lanes[index].classList.add('active');
+        checkHit(index);
+    }, { passive: false });
+
+    const endTouch = (e) => {
+        e.preventDefault();
+        lanes[index].classList.remove('active');
+
+        if (activeHolds[index]) {
+            const note = activeHolds[index];
+            const currentTime = bgm.readyState >= 2 ? bgm.currentTime * 1000 : performance.now() - startTime;
+            const endTime = note.time + note.duration;
+            const timeDiff = Math.abs(endTime - currentTime);
+
+            note.isHoldingCompleted = true; // 削除可能にする
+
+            if (timeDiff <= WINDOW_PERFECT) {
+                registerHit('perfect', note, index);
+            } else if (timeDiff <= WINDOW_GREAT) {
+                registerHit('great', note, index);
+            } else {
+                registerHit('miss', note, index);
+            }
+
+            delete activeHolds[index];
+        }
+    };
+
+    laneEl.addEventListener('touchend', endTouch, { passive: false });
+    laneEl.addEventListener('touchcancel', endTouch, { passive: false });
+});
+
 // 判定処理
 function checkHit(lane) {
     const currentTime = bgm.readyState >= 2 ? bgm.currentTime * 1000 : performance.now() - startTime;
