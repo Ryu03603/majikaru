@@ -71,12 +71,12 @@
         <!-- スタート画面 -->
         <div id="start-screen">
             <h1>Rhythmias</h1>
-            <p>※音源ファイル（.mp3, .wavなど）を選択してください。</p>
-            <input type="file" id="audio-upload" accept="audio/*">
+            <p>※デフォルト音源: LaVI-Bavellabion.mp3<br>必要に応じてファイルを選択してください。</p>
+            <input type="file" id="audio-upload" accept="audio/*, .mp3, .wav, .m4a, .flac, .ogg">
             <label for="audio-upload" class="custom-file-upload">
-                音源を選択
+                音源を選択 (任意)
             </label>
-            <div id="selected-file-name">未選択</div>
+            <div id="selected-file-name">LaVI-Bavellabion.mp3</div>
 
             <!-- 一時的に難易度選択をコメントアウト
             <div class="difficulty-select">
@@ -91,7 +91,7 @@
                 <label><input type="radio" name="lanes" value="2"> 2 LANES</label>
             </div>
 
-            <button id="start-btn" disabled>PLEASE SELECT AUDIO</button>
+            <button id="start-btn" disabled>LOADING...</button>
             <p class="instructions">Keys: D, F, J, K</p>
             <p style="font-size: 0.9rem; color: #888; margin-top: 10px;">※ゲーム中にESCキーを押すと一時停止することができます。</p>
         </div>
@@ -130,7 +130,7 @@
         </div>
     </div>
 
-    <audio id="bgm"></audio>
+    <audio id="bgm" src="LaVI-Bavellabion.mp3"></audio>
 
     <script src="script.js?v=2"></script>
 </body>
