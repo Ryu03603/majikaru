@@ -144,140 +144,171 @@ async function analyzeAudioAndGenerateBeatmap(url, difficulty = 'normal') {
 
         const channelData = audioBuffer.getChannelData(0); // モノラル解析
         const sampleRate = audioBuffer.sampleRate;
-        const map = [];
-
-        // 1秒ごとのRMS(エネルギー)と最大ピークを計算して全体の平均やサビを判定
-        const chunkSize = sampleRate; // 1秒
+        
+        // --- 1. BPMとオフセットの解析フェーズ ---
+        // 0.05秒(50ms)ごとのエネルギーを計算して解像度を上げる
+        const blockSize = Math.floor(sampleRate * 0.05); 
         const energies = [];
-        const maxPeaks = [];
-        for (let i = 0; i < channelData.length; i += chunkSize) {
+        for (let i = 0; i < channelData.length; i += blockSize) {
             let sumSq = 0;
-            let maxP = 0;
-            const end = Math.min(i + chunkSize, channelData.length);
-            for (let j = i; j < end; j++) {
-                const val = Math.abs(channelData[j]);
-                sumSq += val * val;
-                if (val > maxP) maxP = val;
+            let limit = Math.min(i + blockSize, channelData.length);
+            for (let j = i; j < limit; j++) {
+                sumSq += channelData[j] * channelData[j];
             }
-            energies.push(Math.sqrt(sumSq / (end - i)));
-            maxPeaks.push(maxP);
+            energies.push(Math.sqrt(sumSq / (limit - i)));
         }
-
-        // エネルギーの上位30%をサビ（盛り上がり）と判定する
-        const sortedEnergies = [...energies].sort((a, b) => b - a);
-        const highEnergyThreshold = sortedEnergies[Math.floor(energies.length * 0.3)]; // 上位30%の境界値
-
-        const isHard = difficulty === 'hard';
-        // 連続ヒットの間隔を限界まで狭める(0.15 -> 0.1)
-        const minGap = isHard ? sampleRate * 0.1 : sampleRate * 0.25;
-        let lastPeakPos = 0;
-        let holdEndTimes = [0, 0, 0, 0]; // 各レーンの長押し終了時間を記録
-
-        for (let i = 0; i < channelData.length; i++) {
-            const chunkIndex = Math.floor(i / chunkSize);
-            const currentEnergy = energies[chunkIndex];
-            const currentMaxPeak = maxPeaks[chunkIndex];
-
-            // 基本はエネルギー（音圧）を基準にしきい値を動的計算
-            let localThreshold = currentEnergy * (isHard ? 1.2 : 1.5);
-
-            // ドラムなどが無い「のっぺりした」曲調だと、最大音量がエネルギーの1.5倍に届かずノーツが生成されない。
-            // そのため、その1秒間の中で一番大きいピークの一定割合は必ず拾えるように上限を設ける。
-            const guaranteedThreshold = currentMaxPeak * (isHard ? 0.6 : 0.8);
-            localThreshold = Math.min(localThreshold, guaranteedThreshold);
-
-            // ただし、完全な無音時のノイズを拾わないように最低値を設定
-            localThreshold = Math.max(localThreshold, 0.015);
-
-            if (Math.abs(channelData[i]) > localThreshold) {
-                if (i - lastPeakPos > minGap) {
-                    const timeMs = (i / sampleRate) * 1000;
-                    if (timeMs > 2000) { // 開始直後は避ける
-                        const isHighEnergy = energies[chunkIndex] > highEnergyThreshold;
-
-                        // 現在長押し中ではないレーンを探す（200msの余裕を持たせる）
-                        let availableLanes = [];
-                        for (let l = 0; l < currentLanes; l++) {
-                            if (timeMs > holdEndTimes[l] + 200) {
-                                availableLanes.push(l);
-                            }
-                        }
-
-                        // 全レーンが長押し中の場合はスキップ
-                        if (availableLanes.length === 0) {
-                            lastPeakPos = i;
-                            continue;
-                        }
-
-                        // メインのノーツを配置
-                        const laneIndex = Math.floor(Math.random() * availableLanes.length);
-                        const lane = availableLanes[laneIndex];
-                        availableLanes.splice(laneIndex, 1);
-
-                        // 高エネルギー時はホールドノーツを出す確率を追加（通常時も少し出す）
-                        let isHoldChance = isHighEnergy ? (isHard ? 0.5 : 0.3) : (isHard ? 0.1 : 0.05);
-                        let isHold = Math.random() < isHoldChance;
-                        let duration = isHold ? 400 + Math.random() * (isHard ? 600 : 400) : 0; // 400ms~1000ms
-
-                        if (isHold) {
-                            holdEndTimes[lane] = timeMs + duration;
-                        }
-
-                        map.push({ time: timeMs, lane: lane, type: isHold ? 'hold' : 'tap', duration: duration, handled: false, isHolding: false, element: null });
-
-                        // サビ（盛り上がり）時やハードモード時は同時押しを増やす
-                        let simultaneousChance = isHighEnergy ? (isHard ? 0.85 : 0.6) : (isHard ? 0.4 : 0.15);
-                        if (Math.random() < simultaneousChance && availableLanes.length > 0) {
-                            let extraLaneIndex = Math.floor(Math.random() * availableLanes.length);
-                            let extraLane = availableLanes[extraLaneIndex];
-                            availableLanes.splice(extraLaneIndex, 1);
-
-                            // 同時押しはタップにする（長押しでも良いが複雑化を防ぐため）
-                            map.push({ time: timeMs, lane: extraLane, type: 'tap', duration: 0, handled: false, isHolding: false, element: null });
-
-                            // 高エネルギー時、ハードはさらに3つ同時押し確率も大幅上昇
-                            if (isHighEnergy && Math.random() < (isHard ? 0.75 : 0.3) && availableLanes.length > 0) {
-                                let thirdLaneIndex = Math.floor(Math.random() * availableLanes.length);
-                                let thirdLane = availableLanes[thirdLaneIndex];
-                                map.push({ time: timeMs, lane: thirdLane, type: 'tap', duration: 0, handled: false, isHolding: false, element: null });
-                            }
-                        }
-                    }
-                    lastPeakPos = i;
+        
+        // 全体の平均エネルギー
+        let totalEnergy = 0;
+        energies.forEach(e => totalEnergy += e);
+        const avgEnergy = totalEnergy / energies.length;
+        
+        // 局所的（ローカル）な平均エネルギーを計算（前後2.5秒 ＝ ±50ブロック）
+        // これにより、曲全体で見て静かなパートでも、そのパート内での相対的なピークを拾えるようになる
+        const windowSize = 50;
+        const localAvgEnergies = [];
+        for (let i = 0; i < energies.length; i++) {
+            let sum = 0;
+            let count = 0;
+            for (let j = Math.max(0, i - windowSize); j <= Math.min(energies.length - 1, i + windowSize); j++) {
+                sum += energies[j];
+                count++;
+            }
+            localAvgEnergies.push(sum / count);
+        }
+        
+        // ピークの抽出（平均より十分に高く、かつ前後のブロックより高い）
+        const peaks = [];
+        const peakThreshold = avgEnergy * 1.5;
+        for (let i = 1; i < energies.length - 1; i++) {
+            if (energies[i] > peakThreshold && energies[i] > energies[i-1] && energies[i] > energies[i+1]) {
+                peaks.push(i * blockSize / sampleRate); // 発生時間(秒)
+            }
+        }
+        
+        // ピーク間の時間差（インターバル）を計算 (0.3秒〜1.5秒 = 40BPM〜200BPMの範囲)
+        const intervals = [];
+        for (let i = 0; i < peaks.length; i++) {
+            for (let j = i + 1; j < Math.min(i + 10, peaks.length); j++) {
+                const diff = peaks[j] - peaks[i];
+                if (diff >= 0.3 && diff <= 1.5) { 
+                    intervals.push(diff);
                 }
             }
         }
+        
+        // インターバルからBPMを推定
+        const tempoCounts = {};
+        intervals.forEach(interval => {
+            let theoreticalBPM = 60 / interval;
+            // 90〜180の一般的なテンポ帯に正規化
+            while (theoreticalBPM < 90) theoreticalBPM *= 2;
+            while (theoreticalBPM > 180) theoreticalBPM /= 2;
+            
+            const roundedBPM = Math.round(theoreticalBPM);
+            tempoCounts[roundedBPM] = (tempoCounts[roundedBPM] || 0) + 1;
+        });
+        
+        // 最もカウントが多いBPMを採用
+        let maxCount = 0;
+        let guessedBPM = 120; // 検出できなかった場合のデフォルト
+        for (let bpm in tempoCounts) {
+            if (tempoCounts[bpm] > maxCount) {
+                maxCount = tempoCounts[bpm];
+                guessedBPM = parseInt(bpm);
+            }
+        }
+        
+        // 曲の開始位置（第1拍目のオフセット）を特定
+        let offsetMs = 0;
+        const strongThreshold = avgEnergy * 2.5; // より強いピークを最初の拍とする
+        for (let i = 1; i < energies.length - 1; i++) {
+            if (energies[i] > strongThreshold) {
+                offsetMs = (i * blockSize / sampleRate) * 1000;
+                break;
+            }
+        }
+        console.log(`BPM Detected: ${guessedBPM}, Offset: ${offsetMs}ms`);
 
-        // デフォルト曲「test.wav」専用：2分経過後(120000ms)の強制生成ロジック
-        const currentFileName = document.getElementById('selected-file-name').textContent;
-        if (url.includes('test') || currentFileName.includes('test')) {
-            const fallbackStartTime = 120000; // 2分経過時点 (120000ms)
-            const totalDurationMs = audioBuffer.duration * 1000;
+        // --- 2. ビートグリッド生成とノーツ配置（クォンタイズ）フェーズ ---
+        const map = [];
+        const isHard = difficulty === 'hard';
+        const totalDurationMs = audioBuffer.duration * 1000;
+        
+        // 1拍（4分音符）と半拍（8分音符）の長さを計算
+        const beatIntervalMs = 60000 / guessedBPM;
+        const eighthNoteMs = beatIntervalMs / 2;
+        
+        let holdEndTimes = [0, 0, 0, 0];
+        
+        // オフセット位置（基準となる強い拍）から、曲の最初（2000ms付近）までグリッドを逆算する
+        let startTime = offsetMs;
+        while (startTime > 2000 + beatIntervalMs) {
+            startTime -= beatIntervalMs;
+        }
+        while (startTime < 2000) {
+            startTime += beatIntervalMs;
+        }
 
-            if (totalDurationMs > fallbackStartTime + 5000) { // 曲が確実に2分以上ある場合
-                console.log("デフォルト曲の2分以降のノーツを強制生成します！");
-
-                // 2分以降の既存ノーツ（もしあれば）を全てクリア
-                const filteredMap = map.filter(n => n.time < fallbackStartTime);
-                map.length = 0;
-                map.push(...filteredMap);
-
-                // 一定間隔でノーツを生成 (Normal:800ms, Hard:400ms)
-                const interval = isHard ? 400 : 800;
-                for (let t = fallbackStartTime; t < totalDurationMs - 3000; t += interval) {
-                    const lane = Math.floor(Math.random() * currentLanes);
-                    const isHold = Math.random() < (isHard ? 0.3 : 0.1);
-                    const duration = isHold ? (isHard ? 600 : 400) : 0;
-
-                    map.push({ time: t, lane: lane, type: isHold ? 'hold' : 'tap', duration: duration, handled: false, isHolding: false, element: null });
-
-                    // ハードモードの場合は同時押しも追加
-                    if (isHard && Math.random() < 0.4 && currentLanes > 1) {
-                        let extraLane = Math.floor(Math.random() * currentLanes);
-                        if (extraLane !== lane) {
-                            map.push({ time: t, lane: extraLane, type: 'tap', duration: 0, handled: false, isHolding: false, element: null });
-                        }
+        for (let time = startTime; time < totalDurationMs - 2000; time += eighthNoteMs) {
+            // 現在のグリッド周辺のエネルギーを取得
+            const timeInSeconds = time / 1000;
+            const energyIndex = Math.floor((timeInSeconds * sampleRate) / blockSize);
+            
+            if (energyIndex < 0 || energyIndex >= energies.length) continue;
+            
+            const currentEnergy = energies[energyIndex];
+            // その時点での周辺の平均エネルギーを基準にする（静かな場所でもノーツを降らせるため）
+            const baseEnergy = localAvgEnergies[energyIndex];
+            
+            // グリッドが「表拍（ダウンビート）」か「裏拍（アップビート）」か
+            const beatsFromOffset = Math.round((time - offsetMs) / eighthNoteMs);
+            const isDownBeat = (beatsFromOffset % 2 === 0);
+            
+            // 配置のしきい値（大幅に下げてノーツを増やす）
+            // Normal: 表拍は平均の0.8倍、裏拍は1.1倍
+            // Hard: 表拍は平均の0.6倍、裏拍は0.9倍
+            const threshold = isDownBeat ? baseEnergy * (isHard ? 0.6 : 0.8) : baseEnergy * (isHard ? 0.9 : 1.1);
+            
+            if (currentEnergy > threshold) {
+                // 現在長押し中ではないレーンを探す
+                let availableLanes = [];
+                for (let l = 0; l < currentLanes; l++) {
+                    if (time > holdEndTimes[l] + 200) {
+                        availableLanes.push(l);
                     }
+                }
+                
+                if (availableLanes.length === 0) continue;
+                
+                // 盛り上がり判定のしきい値も下げる（1.5倍以上でサビ/強打と判定）
+                const isHighEnergy = currentEnergy > baseEnergy * 1.5;
+                
+                // メインノーツのレーンを決定
+                const laneIndex = Math.floor(Math.random() * availableLanes.length);
+                const lane = availableLanes[laneIndex];
+                availableLanes.splice(laneIndex, 1);
+                
+                // 長押し（ホールド）ノーツの確率と長さ
+                // 表拍でのみホールドを開始し、長さは拍の倍数（1拍分や1.5拍分）にぴったり合わせる
+                let isHoldChance = isHighEnergy ? (isHard ? 0.3 : 0.2) : (isHard ? 0.1 : 0.05);
+                let isHold = isDownBeat && (Math.random() < isHoldChance);
+                let duration = isHold ? (Math.floor(Math.random() * 2) + 1) * beatIntervalMs : 0;
+                
+                if (isHold) {
+                    holdEndTimes[lane] = time + duration;
+                }
+                
+                map.push({ time: time, lane: lane, type: isHold ? 'hold' : 'tap', duration: duration, handled: false, isHolding: false, element: null });
+                
+                // 同時押しノーツの確率（サビやハードモードの表拍で発生しやすい）
+                let simultaneousChance = isHighEnergy ? (isHard ? 0.6 : 0.3) : (isHard ? 0.2 : 0.05);
+                if (isDownBeat && Math.random() < simultaneousChance && availableLanes.length > 0) {
+                    let extraLaneIndex = Math.floor(Math.random() * availableLanes.length);
+                    let extraLane = availableLanes[extraLaneIndex];
+                    availableLanes.splice(extraLaneIndex, 1);
+                    
+                    map.push({ time: time, lane: extraLane, type: 'tap', duration: 0, handled: false, isHolding: false, element: null });
                 }
             }
         }
@@ -722,9 +753,11 @@ function registerHit(judgment, note = null, lane = -1) {
                 note.element.classList.remove('active-hold');
                 if (judgment === 'miss') {
                     note.element.style.opacity = '0.5';
+                } else if (note.element.parentNode) {
+                    // パーフェクトまたはグレイトの時は画面からノーツを消す
+                    note.element.parentNode.removeChild(note.element);
                 }
             }
-            // 成功や失敗に限らずバーの下回るまで消さないため、removeChildは行わない
         }
     }
 
