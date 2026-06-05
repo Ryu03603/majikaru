@@ -23,6 +23,19 @@ const titleBtn = document.getElementById('title-btn');
 const volumeSlider = document.getElementById('volume-slider');
 const audioUpload = document.getElementById('audio-upload');
 const selectedFileName = document.getElementById('selected-file-name');
+const selectScoresBtn = document.getElementById('select-scores-btn');
+const createMapBtn = document.getElementById('create-map-btn');
+
+// Editor DOM Elements
+const editorScreen = document.getElementById('editor-screen');
+const editorPlayBtn = document.getElementById('editor-play-btn');
+const editorStopBtn = document.getElementById('editor-stop-btn');
+const editorSaveBtn = document.getElementById('editor-save-btn');
+const editorExitBtn = document.getElementById('editor-exit-btn');
+const editorTimeEl = document.getElementById('editor-time');
+const recordingIndicator = document.getElementById('recording-indicator');
+
+let scoresDirHandle = null;
 const difficultyRadios = document.querySelectorAll('input[name="difficulty"]');
 const bgm = document.getElementById('bgm');
 const offsetValueEl = document.getElementById('offset-value');
@@ -128,6 +141,15 @@ let isAnalyzing = false;
 async function analyzeAudioAndGenerateBeatmap(url, difficulty = 'normal') {
     if (difficulty === 'test') {
         return generateHoldTestBeatmap();
+    }
+    
+    // カスタム譜面が存在する場合はそれを優先的に読み込む
+    if (scoresDirHandle && selectedFileName.textContent !== '未選択') {
+        const customMap = await loadCustomBeatmap(selectedFileName.textContent);
+        if (customMap) {
+            console.log("カスタム譜面を読み込みました:", customMap);
+            return customMap;
+        }
     }
 
     try {
@@ -368,14 +390,66 @@ audioUpload.addEventListener('change', (e) => {
         const objectURL = URL.createObjectURL(file);
         bgm.src = objectURL;
         
+        // 前の解析状態をリセット
+        audioAnalysisDone = false;
+        isAnalyzing = false;
+        
         // スマホSafari対策: 明示的にloadを呼ぶ
         bgm.load(); 
         
-        audioAnalysisDone = false;
         // 即座に解析処理を開始
         handleAudioLoad(objectURL);
+        
+        // 譜面作成ボタンを有効化 (PCのみサポートされる想定)
+        createMapBtn.disabled = false;
     }
 });
+
+// scoresフォルダを選択する
+selectScoresBtn.addEventListener('click', async () => {
+    try {
+        scoresDirHandle = await window.showDirectoryPicker();
+        selectScoresBtn.textContent = `📁 選択済: ${scoresDirHandle.name}`;
+        selectScoresBtn.style.backgroundColor = '#10b981';
+    } catch (e) {
+        console.warn("フォルダ選択がキャンセルされたか失敗しました:", e);
+    }
+});
+
+// カスタム譜面を読み込むロジック
+async function loadCustomBeatmap(audioName) {
+    if (!scoresDirHandle) return null;
+    try {
+        const matchingFiles = [];
+        const baseName = audioName.split('.').slice(0, -1).join('.') || audioName;
+        const prefix = baseName + '_';
+        // フォルダ内のファイルを列挙
+        for await (const entry of scoresDirHandle.values()) {
+            if (entry.kind === 'file' && entry.name.startsWith(prefix) && entry.name.endsWith('.json')) {
+                const suffix = entry.name.slice(prefix.length, -5); // '.json'を除いた部分
+                // 日付部分が14桁の数字であることを確認 (他の曲と誤判定しないため)
+                if (/^\d{14}$/.test(suffix)) {
+                    matchingFiles.push(entry);
+                }
+            }
+        }
+        
+        if (matchingFiles.length === 0) return null;
+        
+        // 最新のものを探すため、名前に含まれる日付(文字列)でソート
+        matchingFiles.sort((a, b) => b.name.localeCompare(a.name));
+        
+        const latestFileHandle = matchingFiles[0];
+        const file = await latestFileHandle.getFile();
+        const text = await file.text();
+        const data = JSON.parse(text);
+        
+        return data.notes || null;
+    } catch (e) {
+        console.error("カスタム譜面のロード中にエラー:", e);
+        return null;
+    }
+}
 
 // 仮の譜面を生成する関数 (テスト用)
 function generateTestBeatmap() {
@@ -444,7 +518,16 @@ function initGame() {
 }
 
 // ゲーム開始
-function startGame() {
+async function startGame() {
+    // プレイ直前に最新のカスタム譜面がないかチェックして更新する
+    if (scoresDirHandle && selectedFileName.textContent !== '未選択') {
+        const customMap = await loadCustomBeatmap(selectedFileName.textContent);
+        if (customMap) {
+            console.log("最新のカスタム譜面を再ロードしました:", customMap);
+            beatmap = customMap;
+        }
+    }
+
     // レーンモードに応じたUIとキーバインドの設定
     if (currentLanes === 2) {
         KEY_MAP = { 'f': 0, 'F': 0, 'j': 1, 'J': 1 };
@@ -895,5 +978,392 @@ document.addEventListener('keydown', (e) => {
     } else if (e.key === 'ArrowDown') {
         updateJudgmentOffset(judgmentOffset - 5);
         e.preventDefault(); // スクロール防止
+    }
+});
+
+// ==========================================
+// タイムラインエディタ (Editor Mode)
+// ==========================================
+let isEditorMode = false;
+let isEditorPlaying = false;
+let recordedNotes = [];
+let editorUpdateId;
+let editorZoom = 0.2; // 1ms = 0.2px
+
+const timelineWrapper = document.getElementById('timeline-wrapper');
+const timelineContent = document.getElementById('timeline-content');
+const timelinePlayhead = document.getElementById('timeline-playhead');
+const tlNotesContainer = document.getElementById('tl-notes-container');
+const editorZoomIn = document.getElementById('editor-zoom-in');
+const editorZoomOut = document.getElementById('editor-zoom-out');
+
+createMapBtn.addEventListener('click', () => {
+    if (!scoresDirHandle) {
+        alert("先に「scoresフォルダを選択」から保存先フォルダを選んでください！\n(※ブラウザの制約によりフォルダのアクセス許可が必要です)");
+        return;
+    }
+    
+    startScreen.classList.add('hidden');
+    editorScreen.classList.remove('hidden');
+    isEditorMode = true;
+    recordedNotes = [];
+    
+    // エディタの初期化
+    initEditor();
+});
+
+editorExitBtn.addEventListener('click', () => {
+    document.getElementById('confirm-screen').classList.remove('hidden');
+});
+
+document.getElementById('confirm-yes-btn').addEventListener('click', () => {
+    document.getElementById('confirm-screen').classList.add('hidden');
+    stopEditorPlay();
+    editorScreen.classList.add('hidden');
+    startScreen.classList.remove('hidden');
+    isEditorMode = false;
+});
+
+document.getElementById('confirm-no-btn').addEventListener('click', () => {
+    document.getElementById('confirm-screen').classList.add('hidden');
+});
+
+function initEditor() {
+    editorTimeEl.textContent = "00:00.000";
+    tlNotesContainer.innerHTML = '';
+    
+    // タイムラインの長さを設定 (少し余白を持たせる)
+    const duration = bgm.duration || 180; // 未取得の場合は仮で3分
+    timelineContent.style.width = `${duration * 1000 * editorZoom + 500}px`;
+    timelinePlayhead.style.transform = `translateX(0px)`;
+    timelineWrapper.scrollLeft = 0;
+}
+
+function renderTimelineNotes() {
+    tlNotesContainer.innerHTML = '';
+    recordedNotes.forEach(note => {
+        const el = document.createElement('div');
+        el.className = 'tl-note' + (note.type === 'hold' ? ' hold' : '');
+        el.dataset.id = note.id;
+        el.dataset.lane = note.lane;
+        
+        // 位置と幅の計算
+        const left = note.time * editorZoom;
+        let width = note.duration > 0 ? note.duration * editorZoom : 10; // tapの場合は最低10px幅
+        
+        el.style.left = `${left}px`;
+        el.style.width = `${width}px`;
+        
+        // ホールド用リサイズハンドル
+        const resizeHandle = document.createElement('div');
+        resizeHandle.className = 'tl-note-resize';
+        el.appendChild(resizeHandle);
+        
+        tlNotesContainer.appendChild(el);
+    });
+}
+
+function getNoteById(id) {
+    return recordedNotes.find(n => n.id === id);
+}
+
+// ズーム機能
+editorZoomIn.addEventListener('click', () => {
+    editorZoom *= 1.5;
+    initEditor(); // 幅を再計算 (recordedNotesはクリアされない)
+    renderTimelineNotes();
+});
+editorZoomOut.addEventListener('click', () => {
+    editorZoom /= 1.5;
+    initEditor(); // 幅を再計算
+    renderTimelineNotes();
+});
+
+editorPlayBtn.addEventListener('click', () => {
+    if (isEditorPlaying) {
+        stopEditorPlay();
+    } else {
+        // 再生開始 (プレイヘッドの位置から)
+        const currentPx = parseFloat(timelinePlayhead.style.transform.replace('translateX(', '')) || 0;
+        bgm.currentTime = currentPx / editorZoom / 1000;
+        bgm.play();
+        isEditorPlaying = true;
+        editorPlayBtn.innerHTML = '⏸ PAUSE';
+        updateEditorTime();
+    }
+});
+
+editorStopBtn.addEventListener('click', () => {
+    stopEditorPlay();
+    bgm.currentTime = 0; // 最初に戻す
+    timelinePlayhead.style.transform = `translateX(0px)`;
+    timelineWrapper.scrollLeft = 0;
+    editorTimeEl.textContent = "00:00.000";
+});
+
+function stopEditorPlay() {
+    if (!isEditorPlaying) return;
+    bgm.pause();
+    isEditorPlaying = false;
+    editorPlayBtn.innerHTML = '▶ PLAY / PAUSE';
+    cancelAnimationFrame(editorUpdateId);
+}
+
+function updateEditorTime() {
+    if (!isEditorPlaying) return;
+    
+    const timeInSeconds = bgm.currentTime;
+    const timeMs = timeInSeconds * 1000;
+    
+    const mins = Math.floor(timeInSeconds / 60).toString().padStart(2, '0');
+    const secs = Math.floor(timeInSeconds % 60).toString().padStart(2, '0');
+    const ms = Math.floor((timeInSeconds % 1) * 1000).toString().padStart(3, '0');
+    editorTimeEl.textContent = `${mins}:${secs}.${ms}`;
+    
+    // プレイヘッドとスクロール位置の更新
+    const px = timeMs * editorZoom;
+    timelinePlayhead.style.transform = `translateX(${px}px)`;
+    
+    // 画面外に出そうなら自動スクロール
+    const wrapperRect = timelineWrapper.getBoundingClientRect();
+    if (px > timelineWrapper.scrollLeft + wrapperRect.width * 0.8) {
+        timelineWrapper.scrollLeft = px - wrapperRect.width * 0.2;
+    }
+    
+    editorUpdateId = requestAnimationFrame(updateEditorTime);
+}
+
+// --- マウス操作（配置・移動・削除） ---
+let isDragging = false;
+let dragTarget = null;
+let dragType = ''; // 'move' or 'resize' or 'create'
+let dragStartX = 0;
+let dragStartNoteTime = 0;
+let dragStartNoteDur = 0;
+let tempCreatedNote = null;
+
+timelineContent.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return; // 左クリックのみ
+    
+    // ターゲットがノーツかリサイズハンドルか
+    if (e.target.classList.contains('tl-note-resize')) {
+        isDragging = true;
+        dragType = 'resize';
+        dragTarget = e.target.parentElement;
+        const note = getNoteById(dragTarget.dataset.id);
+        dragStartX = e.clientX;
+        dragStartNoteDur = note.duration;
+        e.stopPropagation();
+        return;
+    }
+    
+    if (e.target.classList.contains('tl-note')) {
+        isDragging = true;
+        dragType = 'move';
+        dragTarget = e.target;
+        const note = getNoteById(dragTarget.dataset.id);
+        dragStartX = e.clientX;
+        dragStartNoteTime = note.time;
+        e.stopPropagation();
+        return;
+    }
+    
+    // 空白レーンをクリックした場合は新規配置 (ドラッグでホールド化)
+    const laneEl = e.target.closest('.tl-lane');
+    if (laneEl) {
+        const lane = parseInt(laneEl.dataset.lane);
+        const rect = timelineContent.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const timeMs = clickX / editorZoom;
+        
+        const newNote = {
+            id: Date.now().toString() + Math.random(),
+            time: timeMs,
+            lane: lane,
+            type: 'tap',
+            duration: 0,
+            handled: false,
+            isHolding: false,
+            element: null
+        };
+        recordedNotes.push(newNote);
+        renderTimelineNotes(); // 再描画
+        
+        // そのままリサイズモードに移行（ドラッグしてホールドにするため）
+        const newlyAddedEl = tlNotesContainer.querySelector(`[data-id="${newNote.id}"]`);
+        if (newlyAddedEl) {
+            isDragging = true;
+            dragType = 'create_resize';
+            dragTarget = newlyAddedEl;
+            dragStartX = e.clientX;
+            tempCreatedNote = newNote;
+        }
+    }
+});
+
+window.addEventListener('mousemove', (e) => {
+    if (!isDragging || !dragTarget) return;
+    
+    const noteId = dragTarget.dataset.id;
+    const note = getNoteById(noteId);
+    if (!note) return;
+    
+    const deltaX = e.clientX - dragStartX;
+    const deltaMs = deltaX / editorZoom;
+    
+    if (dragType === 'move') {
+        let newTime = dragStartNoteTime + deltaMs;
+        if (newTime < 0) newTime = 0;
+        note.time = newTime;
+    } else if (dragType === 'resize' || dragType === 'create_resize') {
+        let newDur = (dragType === 'resize' ? dragStartNoteDur : 0) + deltaMs;
+        if (newDur > 20) {
+            note.type = 'hold';
+            note.duration = newDur;
+        } else {
+            note.type = 'tap';
+            note.duration = 0;
+        }
+    }
+    renderTimelineNotes();
+});
+
+window.addEventListener('mouseup', () => {
+    isDragging = false;
+    dragTarget = null;
+    tempCreatedNote = null;
+    
+    // 時間順にソートしておく
+    recordedNotes.sort((a, b) => a.time - b.time);
+});
+
+// 右クリックで削除
+timelineContent.addEventListener('contextmenu', (e) => {
+    e.preventDefault(); // デフォルトメニュー禁止
+    if (e.target.classList.contains('tl-note') || e.target.classList.contains('tl-note-resize')) {
+        const target = e.target.classList.contains('tl-note') ? e.target : e.target.parentElement;
+        const id = target.dataset.id;
+        recordedNotes = recordedNotes.filter(n => n.id !== id);
+        renderTimelineNotes();
+    } else {
+        // 空白部分の右クリックはプレイヘッドの移動（シーク）
+        const rect = timelineContent.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const timeMs = clickX / editorZoom;
+        bgm.currentTime = timeMs / 1000;
+        timelinePlayhead.style.transform = `translateX(${clickX}px)`;
+        
+        const mins = Math.floor(bgm.currentTime / 60).toString().padStart(2, '0');
+        const secs = Math.floor(bgm.currentTime % 60).toString().padStart(2, '0');
+        const ms = Math.floor((bgm.currentTime % 1) * 1000).toString().padStart(3, '0');
+        editorTimeEl.textContent = `${mins}:${secs}.${ms}`;
+    }
+});
+
+// キーボードでの配置機能
+let activeKeyHolds = {};
+
+window.addEventListener('keydown', (e) => {
+    if (isEditorMode && !e.repeat) {
+        const key = e.key;
+        if (KEY_MAP[key] !== undefined) {
+            const lane = KEY_MAP[key];
+            const timeMs = bgm.currentTime * 1000;
+            
+            const newNote = {
+                id: Date.now().toString() + Math.random(),
+                time: timeMs,
+                lane: lane,
+                type: 'tap',
+                duration: 0,
+                handled: false,
+                isHolding: false,
+                element: null
+            };
+            
+            recordedNotes.push(newNote);
+            activeKeyHolds[lane] = newNote;
+            renderTimelineNotes();
+            
+            // 視覚的フィードバック
+            lanes[lane].classList.add('active');
+        }
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    if (isEditorMode) {
+        const key = e.key;
+        if (KEY_MAP[key] !== undefined) {
+            const lane = KEY_MAP[key];
+            if (activeKeyHolds[lane]) {
+                const note = activeKeyHolds[lane];
+                const timeMs = bgm.currentTime * 1000;
+                const dur = timeMs - note.time;
+                
+                if (dur > 60) { // 短すぎる場合はタップ扱い、それ以上はホールド
+                    note.type = 'hold';
+                    note.duration = dur;
+                }
+                
+                delete activeKeyHolds[lane];
+                renderTimelineNotes();
+            }
+            // 視覚的フィードバック解除
+            lanes[lane].classList.remove('active');
+        }
+    }
+});
+
+// 保存処理
+editorSaveBtn.addEventListener('click', async () => {
+    if (!scoresDirHandle) {
+        alert("scoresフォルダが選択されていません。");
+        return;
+    }
+    if (recordedNotes.length === 0) {
+        alert("ノーツが一つも配置されていません。");
+        return;
+    }
+    
+    try {
+        const audioName = selectedFileName.textContent;
+        const now = new Date();
+        const timestamp = now.getFullYear().toString() +
+            (now.getMonth() + 1).toString().padStart(2, '0') +
+            now.getDate().toString().padStart(2, '0') +
+            now.getHours().toString().padStart(2, '0') +
+            now.getMinutes().toString().padStart(2, '0') +
+            now.getSeconds().toString().padStart(2, '0');
+            
+        const baseName = audioName.split('.').slice(0, -1).join('.') || audioName;
+        const fileName = `${baseName}_${timestamp}.json`;
+        
+        // ゲーム実行時に不要なidを削除してクリーンなデータにする
+        const cleanNotes = recordedNotes.map(n => ({
+            time: n.time,
+            lane: n.lane,
+            type: n.type,
+            duration: n.duration
+        }));
+        
+        const mapData = {
+            audioFile: audioName,
+            createdAt: now.toISOString(),
+            notes: cleanNotes
+        };
+        const jsonString = JSON.stringify(mapData, null, 2);
+        
+        const fileHandle = await scoresDirHandle.getFileHandle(fileName, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(jsonString);
+        await writable.close();
+        
+        alert(`譜面を保存しました！\nファイル名: ${fileName}`);
+        editorExitBtn.click();
+        
+    } catch (e) {
+        console.error("保存エラー:", e);
+        alert("ファイルの保存に失敗しました。フォルダのアクセス権限を確認してください。");
     }
 });

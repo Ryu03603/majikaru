@@ -421,7 +421,8 @@ body {
 /* Screens */
 #start-screen,
 #result-screen,
-#pause-screen {
+#pause-screen,
+#confirm-screen {
     position: absolute;
     top: 0;
     left: 0;
@@ -671,4 +672,134 @@ button:active {
 
 .mode-2lane .note-1 {
     left: 50% !important;
+}
+
+/* Editor Screen */
+#editor-screen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(5, 5, 8, 0.95);
+    backdrop-filter: blur(10px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+#editor-screen button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); opacity: 1; }
+}
+
+/* Timeline Editor UI */
+#timeline-wrapper {
+    width: 90vw;
+    height: 400px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 2px solid #333;
+    overflow-x: auto;
+    overflow-y: hidden;
+    position: relative;
+    border-radius: 5px;
+    cursor: crosshair;
+}
+
+#timeline-content {
+    height: 100%;
+    position: relative;
+    background-image: linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size: 50px 100%;
+    /* Width will be set dynamically via JS */
+}
+
+#timeline-playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background-color: #ef4444;
+    box-shadow: 0 0 10px #ef4444;
+    z-index: 50;
+    pointer-events: none;
+    transform: translateX(0px); /* Changed by JS */
+}
+
+.tl-lane {
+    position: absolute;
+    width: 100%;
+    height: 25%;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    box-sizing: border-box;
+}
+
+.tl-lane[data-lane="0"] { top: 0; background: rgba(255, 0, 85, 0.05); }
+.tl-lane[data-lane="1"] { top: 25%; background: rgba(0, 238, 255, 0.05); }
+.tl-lane[data-lane="2"] { top: 50%; background: rgba(0, 255, 102, 0.05); }
+.tl-lane[data-lane="3"] { top: 75%; background: rgba(255, 170, 0, 0.05); }
+
+.tl-label {
+    position: sticky;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.5);
+    pointer-events: none;
+    z-index: 40;
+}
+
+#tl-notes-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 20;
+}
+
+.tl-note {
+    position: absolute;
+    height: 20%;
+    background-color: #fff;
+    border-radius: 4px;
+    pointer-events: auto;
+    cursor: grab;
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+}
+
+.tl-note:active {
+    cursor: grabbing;
+}
+
+.tl-note[data-lane="0"] { top: 2.5%; background-color: #ff0055; box-shadow: 0 0 5px #ff0055; }
+.tl-note[data-lane="1"] { top: 27.5%; background-color: #00eeff; box-shadow: 0 0 5px #00eeff; }
+.tl-note[data-lane="2"] { top: 52.5%; background-color: #00ff66; box-shadow: 0 0 5px #00ff66; }
+.tl-note[data-lane="3"] { top: 77.5%; background-color: #ffaa00; box-shadow: 0 0 5px #ffaa00; }
+
+.tl-note.hold {
+    opacity: 0.8;
+}
+
+.tl-note-resize {
+    position: absolute;
+    right: -5px;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+    cursor: ew-resize;
+    background: rgba(255, 255, 255, 0.5);
+    z-index: 30;
 }
