@@ -159,8 +159,23 @@
                 </button>
             </div>
             
-            <div style="font-size: 1.2rem; margin-bottom: 10px;">
-                Time: <span id="editor-time">00:00.000</span>
+            <div style="display: flex; gap: 30px; font-size: 1.1rem; margin-bottom: 10px; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px;">
+                <div style="width: 200px; text-align: left; font-family: monospace;">Time: <span id="editor-time" style="color: #00eeff; font-weight: bold; font-size: 1.2rem;">00:00.000</span></div>
+                
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <label for="editor-bpm">BPM:</label>
+                    <input type="number" id="editor-bpm" style="width: 70px; font-size: 1rem; padding: 5px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; text-align: right;" step="1" min="1">
+                </div>
+                
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <label for="editor-grid">Grid:</label>
+                    <select id="editor-grid" style="font-size: 1rem; padding: 5px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;">
+                        <option value="4">1/4 (1拍)</option>
+                        <option value="8">1/8 (半拍)</option>
+                        <option value="12">1/12 (1拍3分割)</option>
+                        <option value="16">1/16 (1/4拍)</option>
+                    </select>
+                </div>
             </div>
 
             <!-- タイムラインエリア -->

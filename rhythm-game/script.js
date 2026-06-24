@@ -34,6 +34,8 @@ const editorSaveBtn = document.getElementById('editor-save-btn');
 const editorExitBtn = document.getElementById('editor-exit-btn');
 const editorTimeEl = document.getElementById('editor-time');
 const recordingIndicator = document.getElementById('recording-indicator');
+const editorBpmInput = document.getElementById('editor-bpm');
+const editorGridSelect = document.getElementById('editor-grid');
 
 let scoresDirHandle = null;
 const difficultyRadios = document.querySelectorAll('input[name="difficulty"]');
@@ -74,6 +76,7 @@ let animationId;
 let beatmap = [];
 let activeNotes = [];
 let noteIndex = 0;
+let globalBPM = 120; // 検出されたBPMを保持するグローバル変数
 
 // 音量調整
 volumeSlider.addEventListener('input', (e) => {
@@ -240,6 +243,7 @@ async function analyzeAudioAndGenerateBeatmap(url, difficulty = 'normal') {
                 guessedBPM = parseInt(bpm);
             }
         }
+        globalBPM = guessedBPM; // グローバルBPMを更新
         
         // 曲の開始位置（第1拍目のオフセット）を特定
         let offsetMs = 0;
@@ -1037,7 +1041,50 @@ function initEditor() {
     timelineContent.style.width = `${duration * 1000 * editorZoom + 500}px`;
     timelinePlayhead.style.transform = `translateX(0px)`;
     timelineWrapper.scrollLeft = 0;
+    
+    // 初期BPMを反映
+    editorBpmInput.value = globalBPM;
+    updateTimelineGrid();
 }
+
+function updateTimelineGrid() {
+    const bpm = parseFloat(editorBpmInput.value) || 120;
+    const gridDivision = parseInt(editorGridSelect.value) || 4;
+    
+    const beatMs = 60000 / bpm;
+    const measureMs = beatMs * 4;
+    const gridMs = measureMs / gridDivision;
+    
+    const measurePx = measureMs * editorZoom;
+    const gridPx = gridMs * editorZoom;
+    
+    // タイムラインの背景にグリッドを描画
+    timelineContent.style.backgroundImage = `
+        linear-gradient(to right, rgba(255,255,255,0.2) 1px, transparent 1px),
+        linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px)
+    `;
+    timelineContent.style.backgroundSize = `${measurePx}px 100%, ${gridPx}px 100%`;
+}
+
+function snapToGrid(timeMs) {
+    const bpm = parseFloat(editorBpmInput.value) || 120;
+    const gridDivision = parseInt(editorGridSelect.value) || 4;
+    
+    const beatMs = 60000 / bpm;
+    const measureMs = beatMs * 4;
+    const gridMs = measureMs / gridDivision;
+    
+    return Math.round(timeMs / gridMs) * gridMs;
+}
+
+editorBpmInput.addEventListener('change', () => {
+    globalBPM = parseFloat(editorBpmInput.value) || 120;
+    updateTimelineGrid();
+});
+
+editorGridSelect.addEventListener('change', () => {
+    updateTimelineGrid();
+});
 
 function renderTimelineNotes() {
     tlNotesContainer.innerHTML = '';
@@ -1174,7 +1221,8 @@ timelineContent.addEventListener('mousedown', (e) => {
         const lane = parseInt(laneEl.dataset.lane);
         const rect = timelineContent.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
-        const timeMs = clickX / editorZoom;
+        let timeMs = clickX / editorZoom;
+        timeMs = snapToGrid(timeMs);
         
         const newNote = {
             id: Date.now().toString() + Math.random(),
@@ -1214,9 +1262,15 @@ window.addEventListener('mousemove', (e) => {
     if (dragType === 'move') {
         let newTime = dragStartNoteTime + deltaMs;
         if (newTime < 0) newTime = 0;
-        note.time = newTime;
+        note.time = snapToGrid(newTime);
     } else if (dragType === 'resize' || dragType === 'create_resize') {
         let newDur = (dragType === 'resize' ? dragStartNoteDur : 0) + deltaMs;
+        
+        // 長さもグリッドにスナップさせるために、終了時間を計算してスナップする
+        const endTimeMs = note.time + newDur;
+        const snappedEndTimeMs = Math.max(note.time, snapToGrid(endTimeMs));
+        newDur = snappedEndTimeMs - note.time;
+        
         if (newDur > 20) {
             note.type = 'hold';
             note.duration = newDur;
@@ -1249,9 +1303,10 @@ timelineContent.addEventListener('contextmenu', (e) => {
         // 空白部分の右クリックはプレイヘッドの移動（シーク）
         const rect = timelineContent.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
-        const timeMs = clickX / editorZoom;
+        let timeMs = clickX / editorZoom;
+        timeMs = snapToGrid(timeMs);
         bgm.currentTime = timeMs / 1000;
-        timelinePlayhead.style.transform = `translateX(${clickX}px)`;
+        timelinePlayhead.style.transform = `translateX(${timeMs * editorZoom}px)`;
         
         const mins = Math.floor(bgm.currentTime / 60).toString().padStart(2, '0');
         const secs = Math.floor(bgm.currentTime % 60).toString().padStart(2, '0');
@@ -1268,7 +1323,8 @@ window.addEventListener('keydown', (e) => {
         const key = e.key;
         if (KEY_MAP[key] !== undefined) {
             const lane = KEY_MAP[key];
-            const timeMs = bgm.currentTime * 1000;
+            let timeMs = bgm.currentTime * 1000;
+            timeMs = snapToGrid(timeMs);
             
             const newNote = {
                 id: Date.now().toString() + Math.random(),
@@ -1298,7 +1354,8 @@ window.addEventListener('keyup', (e) => {
             const lane = KEY_MAP[key];
             if (activeKeyHolds[lane]) {
                 const note = activeKeyHolds[lane];
-                const timeMs = bgm.currentTime * 1000;
+                let timeMs = bgm.currentTime * 1000;
+                timeMs = snapToGrid(timeMs);
                 const dur = timeMs - note.time;
                 
                 if (dur > 60) { // 短すぎる場合はタップ扱い、それ以上はホールド
