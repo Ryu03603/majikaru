@@ -1323,6 +1323,10 @@ window.addEventListener('keydown', (e) => {
         const key = e.key;
         if (KEY_MAP[key] !== undefined) {
             const lane = KEY_MAP[key];
+            
+            // 既にそのレーンで長押し記録中の場合は追加しない（リピート誤爆防止）
+            if (activeKeyHolds[lane]) return;
+            
             let timeMs = bgm.currentTime * 1000;
             timeMs = snapToGrid(timeMs);
             
