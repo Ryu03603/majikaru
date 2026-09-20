@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Othello +「まじかるモード」 総合コントローラー
  * 通常のオセロ処理に加え、13種類の固有魔法の挙動、CPUの思考・魔法発動ロジック、
  * およびDOM（HTML要素）の更新と各種エフェクトのアニメーション制御を行います。
@@ -46,7 +46,7 @@ let initializing_var = null;
 // window.Moduleは ai.js がロードされたときに認識され、設定をオーバーライドします
 window.Module = {
   'noInitialRun': true,
-  'onRuntimeInitialized': function() {
+  'onRuntimeInitialized': function () {
     initializing_var = setInterval(initialize_ai, 100);
   }
 };
@@ -110,6 +110,8 @@ let board = [];               // 盤面の状態（2次元配列）。EMPTY, BLA
 let currentTurn = BLACK;      // 現在誰のターンか（初手は必ず黒）
 let playerScores = { [BLACK]: 2, [WHITE]: 2 }; // 黒と白のそれぞれの石の数
 let isCPUThinking = false;    // CPUが思考中（プレイヤーの操作を無効にするフラグ）
+
+let playerLastActionableMagic = null; // マーゴが真似るために、プレイヤーが最後に発動した特定の対象魔法（4, 6, 11）を記録
 let gameEnded = false;        // ゲームが終了したかどうかのフラグ
 let validMoves = [];          // 現在のターンプレイヤーが石を置ける座標と、ひっくり返せる石の一覧
 let isManosabaMode = false;   // 「まじかるモード(魔法あり)」が選ばれているかどうか
@@ -247,9 +249,14 @@ function playMagicSound(spellId) {
  * @param {number} selectedPlayerColor - プレイヤーが選んだ色 (BLACK 又は WHITE)
  */
 function initGame(selectedPlayerColor) {
+  // タイトルを非表示にして縦スペースを節約
+  const gameHeader = document.getElementById('game-header');
+  if (gameHeader) gameHeader.style.display = 'none';
+
   // 色の決定とモードの判定
   playerColor = selectedPlayerColor;
   cpuColor = playerColor === BLACK ? WHITE : BLACK;
+  playerLastActionableMagic = null;
   const modeRadios = document.getElementsByName('game-mode');
   if (modeRadios.length) {
     for (const radio of modeRadios) {
@@ -320,16 +327,18 @@ function initGame(selectedPlayerColor) {
     } else {
       cpuMagics = drawMagics(5, cpuUsedMagicIds);
     }
-    
+
     createBoardDOM();  // 盤面のHTML(DOM)構造を生成
     saveHistoryState(); // メルル用に初期状態を記録
-    
+
     isCPUThinking = true;
     distributeMagicsAnimation(() => {
       isCPUThinking = false;
       renderMagics(true); // 手札を描画（フリップインアニメーションあり）
       updateBoardDOM();
-      updateGameState();
+      margoMassCopy(() => {
+        updateGameState();
+      });
     });
     return; // アニメーション後に実行するためここで終了
   }
@@ -438,7 +447,7 @@ function renderMagics(animateFlipTarget = false) {
     // すでに使われたか、グローバル制限に引っかかるなら .used クラスを付けて暗くする
     card.className = 'magic-card' + (m.used || isGlobal ? ' used' : '');
     if (animateFlipTarget === 'all') card.classList.add('flip-in');
-    
+
     const img = document.createElement('img');
     img.src = MAGIC_IMAGES[m.spell.id] || MAGIC_IMAGES[0];
     img.alt = m.spell.name;
@@ -472,10 +481,10 @@ function renderMagics(animateFlipTarget = false) {
 
     const card = document.createElement('div');
     card.className = 'magic-card' + (m.used || isGlobal ? ' used' : '');
-    
+
     const isFaceUp = opponentType === 'pvp' || cpuMagicRevealed;
     if ((animateFlipTarget === 'all' || animateFlipTarget === 'cpu') && isFaceUp) card.classList.add('flip-in');
-    
+
     const img = document.createElement('img');
     img.src = isFaceUp ? (MAGIC_IMAGES[m.spell.id] || MAGIC_IMAGES[0]) : MAGIC_IMAGES[0];
     img.alt = isFaceUp ? m.spell.name : "裏向きのカード";
@@ -509,7 +518,7 @@ function distributeMagicsAnimation(onComplete) {
   // 実際の枠（プレースホルダー）を先に作って座標を取得する
   pMagicDeck.innerHTML = ''; cMagicDeck.innerHTML = '';
   const pSlots = []; const cSlots = [];
-  
+
   for (let i = 0; i < playerMagics.length; i++) {
     const pCard = document.createElement('div'); pCard.className = 'magic-card'; pCard.style.opacity = '0';
     const pImg = document.createElement('img');
@@ -541,7 +550,7 @@ function distributeMagicsAnimation(onComplete) {
   const cDeckEl = document.getElementById('cpu-deck-stack');
   const pDeckRect = pDeckEl ? pDeckEl.getBoundingClientRect() : { left: 10, top: window.innerHeight / 2 };
   const cDeckRect = cDeckEl ? cDeckEl.getBoundingClientRect() : { left: 10, top: window.innerHeight / 2 };
-  
+
   // 同時に配るため、効果音は1回だけ再生する
   shuffleSound.currentTime = 0;
   shuffleSound.play().catch(e => console.warn('シャッフル音源再生ブロック:', e));
@@ -550,29 +559,29 @@ function distributeMagicsAnimation(onComplete) {
     const flyingCard = document.createElement('div');
     flyingCard.className = 'flying-card';
     const img = document.createElement('img');
-    
+
     // 配る際は常に裏面として飛んでくる
     img.src = MAGIC_IMAGES[0];
-    
+
     flyingCard.appendChild(img);
     document.body.appendChild(flyingCard);
-    
+
     // スタート位置（それぞれの山札）
     const deckRect = targetObj.type === 'player' ? pDeckRect : cDeckRect;
     flyingCard.style.left = `${deckRect.left}px`;
     flyingCard.style.top = `${deckRect.top}px`;
     flyingCard.style.transform = 'scale(1) rotate(0deg)';
     flyingCard.style.opacity = '1';
-    
+
     // リフローを強制してアニメーションを開始させる
     void flyingCard.offsetWidth;
-    
+
     // ゴール位置（プレースホルダーの場所）
     const slotRect = targetObj.slot.getBoundingClientRect();
     flyingCard.style.left = `${slotRect.left}px`;
     flyingCard.style.top = `${slotRect.top}px`;
     flyingCard.style.transform = 'scale(1) rotate(0deg)';
-    
+
     // アニメーション完了後の処理 (transition: 0.4s)
     setTimeout(() => {
       flyingCard.style.opacity = '0'; // 飛んでいたカードを消す
@@ -580,11 +589,11 @@ function distributeMagicsAnimation(onComplete) {
       setTimeout(() => flyingCard.remove(), 200); // 完全に消えたらDOMから削除
     }, 400);
   });
-  
+
   // すべてのカード配りが終わるまで待つ (0.4s)
   setTimeout(() => {
     pSlots.forEach(s => s.classList.add('flip-out'));
-    
+
     const isCpuFaceUp = opponentType === 'pvp' || cpuMagicRevealed;
     if (isCpuFaceUp) {
       cSlots.forEach(s => s.classList.add('flip-out'));
@@ -603,7 +612,7 @@ function distributeMagicsAnimation(onComplete) {
 function returnMagicsToDeckAnimation(onComplete) {
   const pCardsDOM = Array.from(pMagicDeck.querySelectorAll('.magic-card'));
   const cCardsDOM = Array.from(cMagicDeck.querySelectorAll('.magic-card'));
-  
+
   const pDeckEl = document.getElementById('player-deck-stack');
   const cDeckEl = document.getElementById('cpu-deck-stack');
   const pDeckRect = pDeckEl ? pDeckEl.getBoundingClientRect() : { left: 10, top: window.innerHeight / 2 };
@@ -625,24 +634,24 @@ function returnMagicsToDeckAnimation(onComplete) {
       cloneImg.src = MAGIC_IMAGES[0]; // 全て裏面に
       flyingCard.appendChild(cloneImg);
       document.body.appendChild(flyingCard);
-      
+
       const slotRect = cardElement.getBoundingClientRect();
       flyingCard.style.left = `${slotRect.left}px`;
       flyingCard.style.top = `${slotRect.top}px`;
       flyingCard.style.transform = 'scale(1) rotate(0deg)';
       flyingCard.style.opacity = '1';
-      
+
       cardElement.style.opacity = '0';
-      
+
       setTimeout(() => {
         flyingCard.classList.remove('flip-in');
         void flyingCard.offsetWidth;
-        
+
         // ゴール位置（山札）: サイズは小さくせず scale(1) のまま
         flyingCard.style.left = `${deckRect.left}px`;
         flyingCard.style.top = `${deckRect.top}px`;
         flyingCard.style.transform = 'scale(1) rotate(0deg)';
-        
+
         setTimeout(() => {
           flyingCard.style.opacity = '0';
           setTimeout(() => flyingCard.remove(), 200);
@@ -676,12 +685,12 @@ function promptMagic(index, isCpuDeck = false) {
   activeMagicIsCpuDeck = isCpuDeck;
   magicConfirmName.textContent = magic.spell.name;
   magicConfirmDesc.textContent = magic.spell.desc;
-  
+
   if (magicConfirmImg) {
     const trueId = magic.spell.name.startsWith('宝生マーゴ→') ? 7 : magic.spell.id;
     magicConfirmImg.src = (isCpuDeck && !cpuMagicRevealed) ? MAGIC_IMAGES[0] : (MAGIC_IMAGES[trueId] || MAGIC_IMAGES[0]);
   }
-  
+
   magicConfirmModal.style.display = 'flex';
 }
 
@@ -841,7 +850,9 @@ function executeMagicLogic(magicId, casterIsCpu, index) {
             isCPUThinking = false;
             renderMagics('all');
             updateBoardDOM();
-            endMagicTurn(); // 非同期で完了後にターンを終了させる
+            margoMassCopy(() => {
+              endMagicTurn();
+            });
           });
         });
         return 'async'; // 同期的な処理をスキップするフラグ
@@ -895,7 +906,7 @@ function executeMagicLogic(magicId, casterIsCpu, index) {
       }
       case 12: { // 沢渡ココ: 相手の手札を見る
         cpuMagicRevealed = true;
-        
+
         // 相手のカードを回転させて見せるアニメーション
         const cCards = cMagicDeck.querySelectorAll('.magic-card');
         if (cCards.length > 0) {
@@ -988,6 +999,10 @@ function handleTargetingClick(r, c) {
     specialStones[r][c] = 'swapped';
     specialStones[targetingCache.r1][targetingCache.c1] = 'swapped';
 
+    if (!activeMagicIsCpuDeck) {
+      playerLastActionableMagic = { id: 6, r1: targetingCache.r1, c1: targetingCache.c1, r2: r, c2: c };
+    }
+
     const idx = activeMagicIndex; activeMagicIndex = null;
     commitMagic(idx, activeMagicIsCpuDeck, null);
   }
@@ -1018,6 +1033,10 @@ function handleTargetingClick(r, c) {
     specialStones[r][c] = 'moved';
     specialStones[targetingCache.r1][targetingCache.c1] = 'moved-from';
 
+    if (!activeMagicIsCpuDeck) {
+      playerLastActionableMagic = { id: 11, r1: targetingCache.r1, c1: targetingCache.c1, r2: r, c2: c, col: targetingCache.col };
+    }
+
     const idx = activeMagicIndex; activeMagicIndex = null;
     commitMagic(idx, activeMagicIsCpuDeck, null);
   }
@@ -1037,11 +1056,17 @@ document.getElementById('btn-color-black').addEventListener('click', () => {
 document.getElementById('btn-color-white').addEventListener('click', () => {
   if (activeMagicIndex === null) return;
   colorSelectModal.style.display = 'none';
+  const origColor = board[targetingCache.r][targetingCache.c];
   board[targetingCache.r][targetingCache.c] = WHITE;
   specialStones[targetingCache.r][targetingCache.c] = 'changed';
+  if (!activeMagicIsCpuDeck) {
+    playerLastActionableMagic = { id: 4, r: targetingCache.r, c: targetingCache.c, originalColor: origColor };
+  }
   const idx = activeMagicIndex; activeMagicIndex = null;
   commitMagic(idx, activeMagicIsCpuDeck, null);
 });
+
+
 
 /**
  * 紫藤アリサの着火魔法を適用し、指定したマスを3ターンの間「発火状態」にします。
@@ -1356,20 +1381,73 @@ function getRandomEmpty() { const em = []; for (let r = 0; r < ROWS; r++) for (l
  */
 function makeCPUMove() {
   if (gameEnded) return;
-  // 魔法が許可されていれば、確率25%で魔法を使う
+  // 魔法を使うか（確率25%で魔法使用）
   const turnsTaken = currentMoveHistory.length / 2;
   const isEarlyGame = turnsTaken < 4; // CPUの1,2手目(全体で4手目未満)は魔法を使わない
 
+  const isMargo = isSpecialMode && opponentType === 'cpu' && getCpuName() === '宝生マーゴ';
+
+  // 1. 宝生マーゴの真似（カウンター）ロジック
+  if (isMargo && playerLastActionableMagic && cpuMagicBlocked <= 0) {
+    const counterIndex = cpuMagics.findIndex(m => !m.used && m.spell.id === playerLastActionableMagic.id);
+    if (counterIndex !== -1) {
+      // 真似を実行
+      const magicName = cpuMagics[counterIndex].spell.name;
+      const modal = document.getElementById('cpu-magic-modal');
+      const msgEl = document.getElementById('cpu-magic-message');
+      const btnClose = document.getElementById('btn-close-cpu-magic');
+
+      msgEl.textContent = `${getCpuName()}が魔法「${magicName}」を使用しました！`;
+      modal.style.display = 'flex';
+
+      const closeHandler = () => {
+        modal.style.display = 'none';
+        btnClose.removeEventListener('click', closeHandler);
+
+        const p = playerLastActionableMagic;
+        if (p.id === 6) { // 佐伯ミリア
+          const temp = board[p.r1][p.c1];
+          board[p.r1][p.c1] = board[p.r2][p.c2];
+          board[p.r2][p.c2] = temp;
+          specialStones[p.r1][p.c1] = 'swapped';
+          specialStones[p.r2][p.c2] = 'swapped';
+        } else if (p.id === 4) { // 城ケ崎ノア
+          board[p.r][p.c] = p.originalColor;
+          specialStones[p.r][p.c] = 'changed';
+        } else if (p.id === 11) { // 遠野ハンナ
+          board[p.r1][p.c1] = p.col;
+          board[p.r2][p.c2] = EMPTY;
+          specialStones[p.r1][p.c1] = 'moved';
+          specialStones[p.r2][p.c2] = 'moved-from';
+        }
+        playerLastActionableMagic = null;
+        commitMagic(counterIndex, true, null);
+        renderBoard();
+        renderMagics('all');
+        isCPUThinking = true;
+        setTimeout(() => {
+          isCPUThinking = false;
+          makeCPUMovePlacement();
+        }, 1500);
+      };
+      btnClose.addEventListener('click', closeHandler);
+      return;
+    }
+  }
+
+  // 2. 通常の魔法使用
   if (isManosabaMode && cpuMagicBlocked <= 0 && !isEarlyGame && Math.random() < 0.25) {
     const avail = cpuMagics.map((m, i) => ({ ...m, i })).filter(m => {
       if (m.used) return false;
       const checkId = m.spell.name.startsWith('宝生マーゴ→') ? 7 : m.spell.id;
-      if (isSpecialMode) return true; // 特殊モードは同カードが複数あるため重複チェックをスキップ
+      if (isSpecialMode) {
+        if (isMargo && [4, 6, 11].includes(m.spell.id)) return false; // マーゴは対象カードをランダム使用せず温存
+        return true;
+      }
       return !cpuUsedMagicIds.has(checkId);
     });
     if (avail.length > 0) {
       const magic = avail[Math.floor(Math.random() * avail.length)];
-      // CPUが選んだ魔法を使って成功したらリターン（魔法をかけ終えてターン完了）
       if (executeCpuMagic(magic.spell, magic.i)) return;
     }
   }
@@ -1663,12 +1741,12 @@ function executeCpuMagic(spell, index) {
       if (u.length > 0) { cb = () => { playerMagics.splice(u[Math.floor(Math.random() * u.length)].i, 1); }; } else { ok = false; }
       break;
     }
-    case 2: cb = () => { 
-      playerMagics = drawMagics(playerMagics.length, playerUsedMagicIds); 
+    case 2: cb = () => {
+      playerMagics = drawMagics(playerMagics.length, playerUsedMagicIds);
       if (isSpecialMode && opponentType === 'cpu') {
         cpuMagics = cpuSpecialDeck.splice(0, cpuMagics.length);
       } else {
-        cpuMagics = drawMagics(cpuMagics.length, cpuUsedMagicIds); 
+        cpuMagics = drawMagics(cpuMagics.length, cpuUsedMagicIds);
       }
       isCPUThinking = true;
       returnMagicsToDeckAnimation(() => {
@@ -1676,7 +1754,9 @@ function executeCpuMagic(spell, index) {
           isCPUThinking = false;
           renderMagics('all');
           updateBoardDOM();
-          endMagicTurn(); // 非同期で完了後にターンを終了させる
+          margoMassCopy(() => {
+              endMagicTurn();
+            });
         });
       });
       return 'async'; // commitMagic側で同期実行をキャンセルするフラグ
@@ -1696,16 +1776,16 @@ function executeCpuMagic(spell, index) {
       break;
     }
     case 8: cb = () => { playerMagicBlocked = 3; }; break;
-    case 9: { 
-      const st = []; 
+    case 9: {
+      const st = [];
       for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
           if (board[r][c] !== EMPTY && !fireStates.find(f => f.r === r && f.c === c)) st.push({ r, c });
         }
       }
       const s = st.length ? st[Math.floor(Math.random() * st.length)] : null;
-      if (s) { cb = () => { applyFire(s.r, s.c); }; } else { ok = false; } 
-      break; 
+      if (s) { cb = () => { applyFire(s.r, s.c); }; } else { ok = false; }
+      break;
     }
     case 10: { cb = () => { specialStones = Array(ROWS).fill().map(() => Array(COLS).fill(null)); let bs = 0, ws = 0; const co = []; for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) { if (board[r][c] === BLACK) bs++; if (board[r][c] === WHITE) ws++; if (board[r][c] !== EMPTY) co.push({ r, c }); } co.sort(() => Math.random() - 0.5); co.forEach((p, i) => board[p.r][p.c] = i < bs ? BLACK : WHITE); }; break; }
     case 11: { const s = getRandomStone(cpuColor) || getRandomStone(playerColor); const e = getRandomEmpty(); if (s && e) { cb = () => { board[e.r][e.c] = board[s.r][s.c]; board[s.r][s.c] = EMPTY; specialStones[e.r][e.c] = 'moved'; specialStones[s.r][s.c] = 'moved-from'; }; } else { ok = false; } break; }
@@ -1735,10 +1815,10 @@ function executeCpuMagic(spell, index) {
     const modal = document.getElementById('cpu-magic-modal');
     const msgEl = document.getElementById('cpu-magic-message');
     const btnClose = document.getElementById('btn-close-cpu-magic');
-    
+
     msgEl.textContent = `${getCpuName()} が 魔法「${spell.name}」を使用しました！`;
     modal.style.display = 'flex';
-    
+
     // 一度だけクリックイベントをリッスンするための関数
     const closeHandler = () => {
       modal.style.display = 'none';
@@ -1746,7 +1826,7 @@ function executeCpuMagic(spell, index) {
       commitMagic(index, true, cb, spell.id === 7);
     };
     btnClose.addEventListener('click', closeHandler);
-    
+
     return true;
   }
   return false;
@@ -1867,9 +1947,39 @@ btnPlayWhite.addEventListener('click', () => {
   initGame(WHITE);
 });
 surrenderBtn.addEventListener('click', () => { if (!gameEnded) confirmSurrenderModal.style.display = 'flex'; });
-restartBtn.addEventListener('click', () => { 
-  gameOverModal.style.display = 'none'; 
-  titleScreenModal.style.display = 'flex'; 
+restartBtn.addEventListener('click', () => {
+  gameOverModal.style.display = 'none';
+  titleScreenModal.style.display = 'flex';
+
+  // タイトルを再表示
+  const gameHeader = document.getElementById('game-header');
+  if (gameHeader) gameHeader.style.display = 'flex';
+});
+
+// 設定モーダルの開閉
+const settingsBtn = document.getElementById('settings-btn');
+const settingsModal = document.getElementById('settings-modal');
+const btnCloseSettings = document.getElementById('btn-close-settings');
+
+if (settingsBtn && settingsModal && btnCloseSettings) {
+  settingsBtn.addEventListener('click', () => {
+    // まじかるモード（特殊モード含む）の場合のみ、魔法一覧ボタンを表示
+    const magicListContainer = document.getElementById('settings-magic-list-container');
+    if (magicListContainer) {
+      magicListContainer.style.display = isManosabaMode ? 'block' : 'none';
+    }
+    settingsModal.style.display = 'flex';
+  });
+  btnCloseSettings.addEventListener('click', () => {
+    settingsModal.style.display = 'none';
+  });
+}
+
+// 設定から魔法一覧を開く
+document.getElementById('btn-settings-rules')?.addEventListener('click', () => {
+  const settingsModal = document.getElementById('settings-modal');
+  if (settingsModal) settingsModal.style.display = 'none';
+  document.getElementById('rules-modal').style.display = 'flex';
 });
 
 // モード切替のUI制御
@@ -1917,3 +2027,37 @@ document.getElementsByName('game-mode').forEach(radio => radio.addEventListener(
 
 // 初期状態反映
 updateModeUI();
+
+function margoMassCopy(callback) {
+  if (isSpecialMode && opponentType === 'cpu' && getCpuName() === '宝生マーゴ') {
+    let oldIsCPUThinking = isCPUThinking;
+    isCPUThinking = true;
+
+    for (let i = 0; i < 5; i++) {
+      if (playerMagics[i]) {
+        cpuMagics[i] = { spell: playerMagics[i].spell, used: false };
+      }
+    }
+
+    const modal = document.getElementById('cpu-magic-modal');
+    const msgEl = document.getElementById('cpu-magic-message');
+    const btnClose = document.getElementById('btn-close-cpu-magic');
+
+    msgEl.textContent = `宝生マーゴは魔法を5回使用しました！`;
+    modal.style.display = 'flex';
+
+    const closeHandler = () => {
+      modal.style.display = 'none';
+      btnClose.removeEventListener('click', closeHandler);
+      renderMagics('all');
+      isCPUThinking = oldIsCPUThinking;
+      if (callback) callback();
+    };
+    btnClose.addEventListener('click', closeHandler);
+  } else {
+    if (callback) callback();
+  }
+}
+
+
+
