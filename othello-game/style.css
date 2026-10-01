@@ -743,3 +743,69 @@ h1 {
     display: none !important;
   }
 }
+/* --- ラジオボタンのボタン風デザイン --- */
+.setting-section {
+  margin-bottom: 16px;
+}
+.setting-title {
+  font-size: 0.95rem;
+  color: #94a3b8;
+  margin-bottom: 8px;
+  font-weight: bold;
+}
+.radio-button-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.radio-btn {
+  display: inline-flex;
+  cursor: pointer;
+}
+.radio-btn input[type="radio"] {
+  display: none;
+}
+.radio-btn span {
+  padding: 8px 12px;
+  font-size: 0.95rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: #e2e8f0;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+.radio-btn:hover span {
+  background: rgba(255, 255, 255, 0.15);
+}
+.radio-btn input[type="radio"]:checked + span {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border-color: #34d399;
+  color: #fff;
+  font-weight: bold;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+}
+
+/* モード専用の色分け */
+.mode-group .mode-manosaba input[type="radio"]:checked + span {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border-color: #fbbf24;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+}
+.mode-group .mode-special input[type="radio"]:checked + span {
+  background: linear-gradient(135deg, #f43f5e, #e11d48);
+  border-color: #fb7185;
+  box-shadow: 0 2px 8px rgba(244, 63, 94, 0.4);
+}
+.manosaba-group input[type="radio"]:checked + span {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border-color: #fbbf24;
+}
+.special-group input[type="radio"]:checked + span {
+  background: linear-gradient(135deg, #f43f5e, #e11d48);
+  border-color: #fb7185;
+}
+/* タイトル画面のモーダル高さ固定（ガタつき防止） */
+.title-modal .mode-selector {
+  min-height: 400px;
+}

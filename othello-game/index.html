@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 
 <head>
@@ -105,71 +105,62 @@
       <div class="modal-content glass-panel title-modal">
         <h2>Othello</h2>
 
-        <div class="mode-selector" style="margin-bottom: 24px; text-align: left; display: inline-block;">
-          <label
-            style="display: block; margin-bottom: 12px; font-size: 1.1rem; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-            <input type="radio" name="opponent-type" value="cpu" checked> 対戦
-            <span style="margin: 0 12px;">/</span>
-            <input type="radio" name="opponent-type" value="pvp"> 2人プレイ
-          </label>
-          <label style="display: block; margin-bottom: 12px; font-size: 1.1rem;">
-            <input type="radio" name="game-mode" value="normal" checked> 通常モード
-          </label>
-          <div id="normal-opponent-container"
-            style="margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-            <div style="font-size: 0.95rem; color: #94a3b8; margin-bottom: 8px;">相手(通常モード):</div>
-            <label style="margin-right: 12px; font-size: 1.05rem;"><input type="radio" name="cpu-difficulty-normal"
-                value="1" checked> 桜羽エマ</label>
-            <label style="margin-right: 12px; font-size: 1.05rem;"><input type="radio" name="cpu-difficulty-normal"
-                value="3"> 蓮見レイア</label>
-            <label style="margin-right: 12px; font-size: 1.05rem;"><input type="radio" name="cpu-difficulty-normal"
-                value="7"> 二階堂ヒロ</label>
-            <label style="margin-right: 12px; font-size: 1.05rem;"><input type="radio" name="cpu-difficulty-normal"
-                value="16"> 二階堂ヒロ(裏)</label>
+        <div class="mode-selector" style="margin-bottom: 24px; text-align: left; display: inline-block; width: 100%;">
+          
+          <div class="setting-section">
+            <div class="setting-title">対戦形式</div>
+            <div class="radio-button-group">
+              <label class="radio-btn"><input type="radio" name="opponent-type" value="cpu" checked><span>1人で対戦(CPU)</span></label>
+              <label class="radio-btn"><input type="radio" name="opponent-type" value="pvp"><span>2人で対戦(対人)</span></label>
+            </div>
           </div>
 
-          <label style="display: block; color: #fbbf24; font-weight: bold; margin-bottom: 12px; font-size: 1.1rem;">
-            <input type="radio" name="game-mode" value="manosaba"> まじかるモード(魔法あり)
-          </label>
-          <div id="manosaba-opponent-container"
-            style="display: none; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-            <div style="font-size: 0.95rem; color: #fbbf24; margin-bottom: 8px;">相手(まじかるモード):</div>
-            <label style="margin-right: 12px; font-size: 1.05rem;"><input type="radio" name="cpu-difficulty-manosaba"
-                value="4" checked> 黒部ナノカ</label>
-            <label style="margin-right: 12px; font-size: 1.05rem;"><input type="radio" name="cpu-difficulty-manosaba"
-                value="5"> 沢渡ココ</label>
-            <label style="margin-right: 12px; font-size: 1.05rem;"><input type="radio" name="cpu-difficulty-manosaba"
-                value="7"> 氷上メルル</label>
+          <div class="setting-section">
+            <div class="setting-title">ゲームモード</div>
+            <div class="radio-button-group mode-group">
+              <label class="radio-btn mode-normal"><input type="radio" name="game-mode" value="normal" checked><span>通常モード</span></label>
+              <label class="radio-btn mode-manosaba"><input type="radio" name="game-mode" value="manosaba"><span>まじかるモード</span></label>
+              <label id="special-mode-label" class="radio-btn mode-special"><input type="radio" name="game-mode" value="special"><span>特殊モード</span></label>
+            </div>
           </div>
 
-          <label id="special-mode-label"
-            style="display: block; color: #f43f5e; font-weight: bold; margin-bottom: 12px; font-size: 1.1rem;">
-            <input type="radio" name="game-mode" value="special"> 特殊モード
-          </label>
+          <div id="normal-opponent-container" class="setting-section opponent-section">
+            <div class="setting-title">対戦相手 (通常)</div>
+            <div class="radio-button-group">
+              <label class="radio-btn"><input type="radio" name="cpu-difficulty-normal" value="1" checked><span>桜羽エマ</span></label>
+              <label class="radio-btn"><input type="radio" name="cpu-difficulty-normal" value="3"><span>蓮見レイア</span></label>
+              <label class="radio-btn"><input type="radio" name="cpu-difficulty-normal" value="7"><span>二階堂ヒロ</span></label>
+              <label class="radio-btn"><input type="radio" name="cpu-difficulty-normal" value="16"><span>二階堂ヒロ(裏)</span></label>
+            </div>
+          </div>
 
-          <div id="special-opponent-container"
-            style="display: none; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-            <div style="font-size: 0.95rem; color: #f43f5e; margin-bottom: 8px;">特殊モードの相手</div>
-            <label style="margin-right: 12px; font-size: 1.05rem;"><input type="radio" name="special-opponent"
-                value="anan_noa" checked> 夏目アンアン＆城ケ崎ノア</label>
-            <label style="margin-right: 12px; font-size: 1.05rem;"><input type="radio" name="special-opponent"
-                value="miria"> 佐伯ミリア</label><br>
-            <label style="margin-right: 12px; font-size: 1.05rem;"><input type="radio" name="special-opponent"
-                value="arisa"> 紫藤アリサ</label>
-            <label style="margin-right: 12px; font-size: 1.05rem;"><input type="radio" name="special-opponent"
-                value="sherry_hanna"> 橘シェリー＆遠野ハンナ</label>
-            <label style="margin-right: 12px; font-size: 1.05rem;"><input type="radio" name="special-opponent"
-                value="margo"> 宝生マーゴ</label>
-            <div style="font-size: 0.9rem; color: #cbd5e1; margin-top: 12px; line-height: 1.4;">
-              ※特殊モードは、相手が特定の魔法のみを使用する対局モードです。<br>そのため、沢渡ココの魔法は登場しません。
+          <div id="manosaba-opponent-container" class="setting-section opponent-section" style="display: none;">
+            <div class="setting-title" style="color: #fbbf24;">対戦相手 (まじかる)</div>
+            <div class="radio-button-group manosaba-group">
+              <label class="radio-btn"><input type="radio" name="cpu-difficulty-manosaba" value="4" checked><span>黒部ナノカ</span></label>
+              <label class="radio-btn"><input type="radio" name="cpu-difficulty-manosaba" value="5"><span>沢渡ココ</span></label>
+              <label class="radio-btn"><input type="radio" name="cpu-difficulty-manosaba" value="7"><span>氷上メルル</span></label>
+            </div>
+          </div>
+
+          <div id="special-opponent-container" class="setting-section opponent-section" style="display: none;">
+            <div class="setting-title" style="color: #f43f5e;">対戦相手 (特殊)</div>
+            <div class="radio-button-group special-group">
+              <label class="radio-btn"><input type="radio" name="special-opponent" value="anan_noa" checked><span>ノア&アンアン</span></label>
+              <label class="radio-btn"><input type="radio" name="special-opponent" value="miria"><span>佐伯ミリア</span></label>
+              <label class="radio-btn"><input type="radio" name="special-opponent" value="arisa"><span>紫藤アリサ</span></label>
+              <label class="radio-btn"><input type="radio" name="special-opponent" value="sherry_hanna"><span>シェリー&ハンナ</span></label>
+              <label class="radio-btn"><input type="radio" name="special-opponent" value="margo"><span>宝生マーゴ</span></label>
+            </div>
+            <div style="font-size: 0.8rem; color: #cbd5e1; margin-top: 8px; line-height: 1.4;">
+              ※特殊モードは、相手が特定の魔法のみを使用する対局モードです。<br>※沢渡ココの魔法は登場しません。
             </div>
           </div>
 
           <button id="btn-show-rules" class="secondary-btn small-btn"
-            style="width: 100%; margin-top: 8px; color: #fcd34d; border-color: rgba(251, 191, 36, 0.4); margin-bottom: 8px; cursor: pointer;">まじかるモードのルール・魔法一覧</button>
-          <div style="font-size: 0.8rem; color: #94a3b8; text-align: center; margin-bottom: 8px;">※魔法のネタバレを含みます。</div>
+            style="width: 100%; margin-top: 12px; color: #fcd34d; border-color: rgba(251, 191, 36, 0.4); margin-bottom: 4px; cursor: pointer;">まじかるモードのルール・魔法一覧</button>
+          <div style="font-size: 0.75rem; color: #94a3b8; text-align: center; margin-bottom: 24px;">※魔法のネタバレを含みます。</div>
         </div>
-
         <div class="button-group">
           <button id="btn-play-black" class="primary-btn">先手 (黒) でプレイ</button>
           <button id="btn-play-white" class="primary-btn secondary-btn">後手 (白) でプレイ</button>

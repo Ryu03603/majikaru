@@ -123,10 +123,10 @@ let cpuDifficulty = 2;        // CPUの強さ (1:弱い, 2:普通, 3:強い, 7:�
 function getCpuName() {
   if (isSpecialMode) {
     const names = {
-      "anan_noa": "夏目アンアン＆城ケ崎ノア",
+      "anan_noa": "ノア&アンアン",
       "miria": "佐伯ミリア",
       "arisa": "紫藤アリサ",
-      "sherry_hanna": "橘シェリー＆遠野ハンナ",
+      "sherry_hanna": "シェリー&ハンナ",
       "margo": "宝生マーゴ"
     };
     return names[specialOpponent] || "CPU";
@@ -1998,7 +1998,7 @@ function updateModeUI() {
       mode = 'normal';
     }
   } else {
-    if (specialModeLabel) specialModeLabel.style.display = 'block';
+    if (specialModeLabel) specialModeLabel.style.display = 'inline-flex';
   }
 
   if (opType === 'cpu') {
