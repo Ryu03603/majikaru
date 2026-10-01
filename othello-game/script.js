@@ -278,7 +278,7 @@ function initGame(selectedPlayerColor) {
   if (isSpecialMode) {
     const specialRadios = document.getElementsByName('special-opponent');
     for (const radio of specialRadios) { if (radio.checked) specialOpponent = radio.value; }
-    cpuDifficulty = 4; // 特殊モードは強制的にLv4
+    if (specialOpponent === 'ema') { cpuDifficulty = 1; } else if (specialOpponent === 'leia') { cpuDifficulty = 3; } else { cpuDifficulty = 4; } // 特殊モードは強制的にLv4
   } else if (isManosabaMode) {
     const diffRadios = document.getElementsByName('cpu-difficulty-manosaba');
     if (diffRadios.length) { for (const radio of diffRadios) { if (radio.checked) cpuDifficulty = parseInt(radio.value, 10); } }
@@ -1885,7 +1885,7 @@ document.getElementById('btn-confirm-surrender').addEventListener('click', () =>
 if (volumeSlider) {
   volumeSlider.addEventListener('input', (e) => {
     const vol = parseFloat(e.target.value);
-    allSounds.forEach(s => s.volume = vol);
+    allSounds.forEach(s => { s.volume = vol; s.muted = (vol === 0); });
     if (vol === 0) volumeIcon.textContent = "🔇";
     else if (vol < 0.5) volumeIcon.textContent = "🔉";
     else volumeIcon.textContent = "🔊";
@@ -1898,11 +1898,11 @@ if (volumeSlider) {
     if (currentVol > 0) {
       lastVolume = currentVol;
       volumeSlider.value = 0;
-      allSounds.forEach(s => s.volume = 0);
+      allSounds.forEach(s => { s.volume = 0; s.muted = true; });
       volumeIcon.textContent = "🔇";
     } else {
       volumeSlider.value = lastVolume || 0.5;
-      allSounds.forEach(s => s.volume = volumeSlider.value);
+      allSounds.forEach(s => { s.volume = volumeSlider.value; s.muted = false; });
       volumeIcon.textContent = allSounds[0].volume >= 0.5 ? "🔊" : "🔉";
     }
   });
@@ -1912,7 +1912,7 @@ if (volumeSlider) {
 if (bgmVolumeSlider) {
   bgmVolumeSlider.addEventListener('input', (e) => {
     const vol = parseFloat(e.target.value);
-    bgmSound.volume = vol;
+    bgmSound.volume = vol; bgmSound.muted = (vol === 0);
     if (vol === 0) bgmVolumeIcon.textContent = "🔇";
     else if (vol < 0.5) bgmVolumeIcon.textContent = "🔉";
     else bgmVolumeIcon.textContent = "🔊";
@@ -1924,11 +1924,11 @@ if (bgmVolumeSlider) {
     if (currentVol > 0) {
       bgmLastVolume = currentVol;
       bgmVolumeSlider.value = 0;
-      bgmSound.volume = 0;
+      bgmSound.volume = 0; bgmSound.muted = true;
       bgmVolumeIcon.textContent = "🔇";
     } else {
       bgmVolumeSlider.value = bgmLastVolume || 0.05;
-      bgmSound.volume = bgmVolumeSlider.value;
+      bgmSound.volume = bgmVolumeSlider.value; bgmSound.muted = false;
       bgmVolumeIcon.textContent = bgmSound.volume >= 0.5 ? "🔊" : "🔉";
     }
   });
