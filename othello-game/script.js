@@ -1435,23 +1435,58 @@ function makeCPUMove() {
     }
   }
 
-  // 2. 通常の魔法使用
+  // パーフェクト負け防止＆連続使用防止
+  let pStones = 0;
+  let cStones = 0;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (board[r][c] === playerColor) pStones++;
+      if (board[r][c] === cpuColor) cStones++;
+    }
+  }
+  
+  if (typeof window.cpuLastMagicTurn === 'undefined') window.cpuLastMagicTurn = -10;
+  const currentTurnNum = currentMoveHistory.length / 2;
+  const isConsecutive = (currentTurnNum - window.cpuLastMagicTurn) <= 1;
+
+  if (cStones <= 2 || isConsecutive) {
+    makeCPUMovePlacement();
+    return;
+  }
+  // 2. 特殊モード：シェリーの魔法制御（序盤・中盤・終盤に1回ずつ）
+  const isSherryHanna = isSpecialMode && opponentType === 'cpu' && getCpuName() === 'シェリー&ハンナ';
+  if (isSherryHanna && cpuMagicBlocked <= 0) {
+      const totalMoves = currentMoveHistory.length;
+      const sherryCards = cpuMagics.map((m, i) => ({ ...m, i })).filter(m => !m.used && m.spell.id === 10);
+      let shouldUseSherry = false;
+      if (sherryCards.length === 3 && totalMoves >= 8) shouldUseSherry = true;
+      else if (sherryCards.length === 2 && totalMoves >= 26) shouldUseSherry = true;
+      else if (sherryCards.length === 1 && totalMoves >= 46) shouldUseSherry = true;
+
+      if (shouldUseSherry) {
+          const magic = sherryCards[Math.floor(Math.random() * sherryCards.length)];
+          if (executeCpuMagic(magic.spell, magic.i)) { window.cpuLastMagicTurn = currentTurnNum; return; }
+      }
+  }
+
+  // 3. 通常の魔法使用
   if (isManosabaMode && cpuMagicBlocked <= 0 && !isEarlyGame && Math.random() < 0.25) {
     const avail = cpuMagics.map((m, i) => ({ ...m, i })).filter(m => {
       if (m.used) return false;
-      const checkId = m.spell.name.startsWith('宝生マーゴ→') ? 7 : m.spell.id;
+      const checkId = m.spell.name.startsWith('宝生マーゴの') ? 7 : m.spell.id;
       if (isSpecialMode) {
-        if (isMargo && [4, 6, 11].includes(m.spell.id)) return false; // マーゴは対象カードをランダム使用せず温存
+        if (isMargo && [4, 6, 11].includes(m.spell.id)) return false; 
+        if (isSherryHanna && m.spell.id === 10) return false; // シェリーの魔法は除外
         return true;
       }
       return !cpuUsedMagicIds.has(checkId);
     });
     if (avail.length > 0) {
       const magic = avail[Math.floor(Math.random() * avail.length)];
-      if (executeCpuMagic(magic.spell, magic.i)) return;
+      if (executeCpuMagic(magic.spell, magic.i)) { window.cpuLastMagicTurn = currentTurnNum; return; }
     }
   }
-  // もし魔法を使わなかった、あるいは魔法の使用に失敗した場合は、普通に盤面に石を置くロジックへ
+  // 魔法を使わない、あるいは失敗した場合は石を置く
   makeCPUMovePlacement();
 }
 
@@ -1855,6 +1890,14 @@ function surrenderGame() {
     winnerText.textContent = `投了 (${getCpuName()}の勝ち)`;
   }
   winnerText.className = "lose";
+  const copyBtn = document.getElementById('btn-copy-record');
+  if (copyBtn) {
+    if (!isManosabaMode && !isSpecialMode && opponentType === 'cpu') {
+      copyBtn.style.display = 'block';
+    } else {
+      copyBtn.style.display = 'none';
+    }
+  }
   gameOverModal.style.display = 'flex';
 }
 
@@ -1874,10 +1917,28 @@ function endGame() {
     winnerText.className = "lose";
   }
   else { winnerText.textContent = "引き分け！"; winnerText.className = "draw"; }
+  const copyBtn = document.getElementById('btn-copy-record');
+  if (copyBtn) {
+    if (!isManosabaMode && !isSpecialMode && opponentType === 'cpu') {
+      copyBtn.style.display = 'block';
+    } else {
+      copyBtn.style.display = 'none';
+    }
+  }
   gameOverModal.style.display = 'flex';
 }
 
 // 各種ボタン類のイベント登録
+const btnCopyRecord = document.getElementById('btn-copy-record');
+if (btnCopyRecord) {
+  btnCopyRecord.addEventListener('click', () => {
+    navigator.clipboard.writeText(currentMoveHistory).then(() => {
+      alert("棋譜をコピーしました。");
+    }).catch(err => {
+      console.error(err);
+    });
+  });
+}
 document.getElementById('btn-cancel-surrender').addEventListener('click', () => confirmSurrenderModal.style.display = 'none');
 document.getElementById('btn-confirm-surrender').addEventListener('click', () => { confirmSurrenderModal.style.display = 'none'; surrenderGame(); });
 
@@ -2058,6 +2119,3 @@ function margoMassCopy(callback) {
     if (callback) callback();
   }
 }
-
-
-
