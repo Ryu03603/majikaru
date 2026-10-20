@@ -1,4 +1,4 @@
-﻿/* ==========================================
+/* ==========================================
    1. 変数定義エリア (カラーテーマと定数)
    ========================================== */
 :root {
@@ -383,7 +383,8 @@ h1 {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  height: 100dvh;
+  background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(5px);
   -webkit-backdrop-filter: blur(5px);
   display: flex;
@@ -391,6 +392,23 @@ h1 {
   align-items: center;
   z-index: 100;
   animation: fadeIn 0.3s ease;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding: 24px 16px;
+}
+
+.modal-overlay::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-overlay::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.modal-overlay::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 @keyframes fadeIn {
@@ -424,10 +442,14 @@ h1 {
   transform: translateY(0);
   /* 下からスッと昇ってくるアニメーション */
   animation: slideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  max-width: 480px;
+  width: 100%;
+  margin: auto;
 }
 
 .modal-content.small {
-  padding: 24px 40px;
+  padding: 24px 32px;
+  max-width: 400px;
 }
 
 @keyframes slideUp {
@@ -722,6 +744,50 @@ h1 {
 
 /* スマホ向けレイアウト調整 */
 @media (max-width: 600px) {
+  .modal-overlay {
+    padding: 16px 10px;
+    align-items: flex-start;
+  }
+
+  .modal-content {
+    padding: 24px 16px;
+    border-radius: 18px;
+    margin: 10px auto;
+  }
+
+  .modal-content.small {
+    padding: 20px 14px;
+  }
+
+  .modal-content h2 {
+    font-size: 1.8rem;
+    margin-bottom: 14px;
+  }
+
+  .title-modal .mode-selector {
+    min-height: auto;
+    margin-bottom: 16px !important;
+  }
+
+  .setting-section {
+    margin-bottom: 12px;
+  }
+
+  .setting-title {
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+  }
+
+  .radio-btn span {
+    padding: 6px 10px;
+    font-size: 0.85rem;
+  }
+
+  .primary-btn {
+    padding: 12px 20px;
+    font-size: 1rem;
+  }
+
   .magic-deck {
     gap: 0;
     flex-wrap: nowrap;
