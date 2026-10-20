@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Othello +「まじかるモード」 総合コントローラー
  * 通常のオセロ処理に加え、13種類の固有魔法の挙動、CPUの思考・魔法発動ロジック、
  * およびDOM（HTML要素）の更新と各種エフェクトのアニメーション制御を行います。
@@ -29,7 +29,7 @@ const ALL_MAGICS = [
   { id: 5, name: "蓮見レイア（視線誘導）", desc: "相手の手札の魔法1つをランダムで使用済み（使用不可）にする。", requiresTarget: false },
   { id: 6, name: "佐伯ミリア（入れ替わり）", desc: "盤面上の自分の石1つと、相手の石1つの場所を入れ替える。", requiresTarget: 'miria_1' },
   { id: 7, name: "宝生マーゴ（モノマネ）", desc: "相手の未使用魔法を1つコピーして自分のカードとして上書きする（※コピーしたとき、ターンは消費されない）。", requiresTarget: false },
-  { id: 8, name: "黒部ナノカ（幻視）", desc: "次の相手のターン中、相手は魔法を使用できなくなる。", requiresTarget: false },
+  { id: 8, name: "黒部ナノカ（幻視）", desc: "相手は3ターンの間、魔法を使用できなくなる。", requiresTarget: false },
   { id: 9, name: "紫藤アリサ（発火）", desc: "選択した石を発火させる。3ターン後にそこにある石は消滅する。", requiresTarget: 'cell' },
   { id: 10, name: "橘シェリー（怪力）", desc: "現在配置されている全ての石の数を維持したままランダムなマスに置き直す。", requiresTarget: false },
   { id: 11, name: "遠野ハンナ（浮遊）", desc: "盤面上の任意の石1つを、別の空いているマスへ移動させる。", requiresTarget: 'hanna_1' },
@@ -38,21 +38,14 @@ const ALL_MAGICS = [
 ];
 
 // ==========================================
-// Egaroucid AI (WASM) ロード処理
+// Egaroucid AI (WASM) 遅延ロード処理
 // ==========================================
-let ai_initializing = true;
+let ai_loaded = false;
+let ai_initializing = false;
 let initializing_var = null;
 
-// window.Moduleは ai.js がロードされたときに認識され、設定をオーバーライドします
-window.Module = {
-  'noInitialRun': true,
-  'onRuntimeInitialized': function () {
-    initializing_var = setInterval(initialize_ai, 100);
-  }
-};
-
 function initialize_ai() {
-  if (window.Module['onRuntimeInitialized']) {
+  if (window.Module && window.Module['onRuntimeInitialized']) {
     try {
       let percent_pointer = window.Module._malloc(4);
       let init_result = window.Module._init_ai(percent_pointer);
@@ -62,20 +55,39 @@ function initialize_ai() {
         ai_initializing = false;
       } else {
         console.error("Egaroucid AI Load Failed. (init_result != 0)");
+        ai_initializing = false;
       }
     } catch (exception) {
       console.error("Egaroucid AI Exception:", exception);
+      ai_initializing = false;
     }
-    clearInterval(initializing_var);
+    if (initializing_var) clearInterval(initializing_var);
   }
 }
 
-// ai.js を動的にロード
-window.addEventListener('DOMContentLoaded', () => {
+// 二階堂ヒロ(裏)が選択された時だけ裏で非同期ロード
+function loadEgaroucidAI() {
+  if (ai_loaded) return;
+  ai_loaded = true;
+  ai_initializing = true;
+  console.log("Loading Egaroucid AI in background (Nikaido Hiro Ura selected)...");
+
+  window.Module = {
+    'noInitialRun': true,
+    'onRuntimeInitialized': function () {
+      if (initializing_var) clearInterval(initializing_var);
+      initializing_var = setInterval(initialize_ai, 100);
+    }
+  };
+
   const scriptElem = document.createElement('script');
   scriptElem.src = 'https://www.egaroucid.nyanyan.dev/ja/web/ai.js';
+  scriptElem.onerror = () => {
+    console.error("Failed to load ai.js");
+    ai_initializing = false;
+  };
   document.body.appendChild(scriptElem);
-});
+}
 
 // ==========================================
 // 2. 状態管理変数 (ステート)
@@ -210,6 +222,166 @@ const volumeSlider = document.getElementById('volume-slider');
 const volumeIcon = document.getElementById('volume-icon');
 const bgmVolumeSlider = document.getElementById('bgm-volume-slider');
 const bgmVolumeIcon = document.getElementById('bgm-volume-icon');
+const genericAlertModal = document.getElementById('generic-alert-modal');
+const genericAlertMessage = document.getElementById('generic-alert-message');
+const btnCloseGenericAlert = document.getElementById('btn-close-generic-alert');
+const playerTimerEl = document.getElementById('player-timer');
+const cpuTimerEl = document.getElementById('cpu-timer');
+
+// ネット対戦用 持ち時間管理 (各10分 = 600秒)
+const DEFAULT_TIME_LIMIT = 600;
+let playerTimeLeft = DEFAULT_TIME_LIMIT;
+let cpuTimeLeft = DEFAULT_TIME_LIMIT;
+let onlineGameTimer = null;
+
+function formatOnlineTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
+}
+
+function updateTimerDisplay() {
+  if (!playerTimerEl || !cpuTimerEl) return;
+  if (!window.isOnlineMode) {
+    playerTimerEl.style.display = 'none';
+    cpuTimerEl.style.display = 'none';
+    return;
+  }
+
+  playerTimerEl.style.display = 'block';
+  cpuTimerEl.style.display = 'block';
+
+  playerTimerEl.textContent = formatOnlineTime(playerTimeLeft);
+  cpuTimerEl.textContent = formatOnlineTime(cpuTimeLeft);
+
+  if (currentTurn === playerColor) {
+    playerTimerEl.classList.add('active-timer');
+    cpuTimerEl.classList.remove('active-timer');
+  } else {
+    cpuTimerEl.classList.add('active-timer');
+    playerTimerEl.classList.remove('active-timer');
+  }
+
+  if (playerTimeLeft <= 60) playerTimerEl.classList.add('danger-timer');
+  else playerTimerEl.classList.remove('danger-timer');
+
+  if (cpuTimeLeft <= 60) cpuTimerEl.classList.add('danger-timer');
+  else cpuTimerEl.classList.remove('danger-timer');
+}
+
+function startOnlineTimer() {
+  if (onlineGameTimer) clearInterval(onlineGameTimer);
+  updateTimerDisplay();
+
+  onlineGameTimer = setInterval(() => {
+    if (gameEnded) {
+      clearInterval(onlineGameTimer);
+      onlineGameTimer = null;
+      return;
+    }
+
+    if (currentTurn === playerColor) {
+      playerTimeLeft--;
+      if (playerTimeLeft <= 0) {
+        playerTimeLeft = 0;
+        updateTimerDisplay();
+        clearInterval(onlineGameTimer);
+        onlineGameTimer = null;
+        handleTimeOut(true);
+        return;
+      }
+    } else {
+      cpuTimeLeft--;
+      if (cpuTimeLeft <= 0) {
+        cpuTimeLeft = 0;
+        updateTimerDisplay();
+        clearInterval(onlineGameTimer);
+        onlineGameTimer = null;
+        handleTimeOut(false);
+        return;
+      }
+    }
+    updateTimerDisplay();
+  }, 1000);
+}
+
+function handleTimeOut(isMe) {
+  if (gameEnded) return;
+  gameEnded = true;
+  isCPUThinking = false;
+  surrenderBtn.style.display = 'none';
+  if (onlineGameTimer) {
+    clearInterval(onlineGameTimer);
+    onlineGameTimer = null;
+  }
+
+  finalPlayerScore.textContent = playerScores[playerColor];
+  finalCpuScore.textContent = playerScores[cpuColor];
+  const fpLabel = document.getElementById('final-player-label');
+  const fcLabel = document.getElementById('final-cpu-label');
+  if (fpLabel && fcLabel) {
+    fpLabel.textContent = window.formatDisplayName ? window.formatDisplayName(window.localPlayerName) : "あなた";
+    fcLabel.textContent = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "相手";
+  }
+
+  if (isMe) {
+    if (window.isOnlineMode && window.netSendAction) {
+      window.netSendAction({ type: 'timeout' });
+    }
+    const opName = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "相手";
+    winnerText.textContent = `時間切れ (${opName}の勝ち)`;
+    winnerText.className = "lose";
+  } else {
+    winnerText.textContent = "相手の時間切れ (あなたの勝ち！)";
+    winnerText.className = "win";
+  }
+
+  const copyBtn = document.getElementById('btn-copy-record');
+  if (copyBtn) {
+    const isNormal = (!isManosabaMode && !isSpecialMode);
+    if (isNormal && window.isOnlineMode) {
+      copyBtn.style.display = 'block';
+    } else {
+      copyBtn.style.display = 'none';
+    }
+  }
+  gameOverModal.style.display = 'flex';
+}
+
+window.handleRemoteTimeout = function() {
+  handleTimeOut(false);
+};
+
+/**
+ * 汎用アラートモーダルを表示します。
+ * @param {string} message - 表示するメッセージ
+ * @param {function} [callback] - モーダルを閉じた後に実行するコールバック
+ */
+function showModalAlert(message, callback) {
+  if (genericAlertModal && genericAlertMessage && btnCloseGenericAlert) {
+    genericAlertMessage.textContent = message;
+    genericAlertModal.style.display = 'flex';
+    const closeHandler = () => {
+      genericAlertModal.style.display = 'none';
+      btnCloseGenericAlert.removeEventListener('click', closeHandler);
+      genericAlertModal.removeEventListener('click', overlayHandler);
+      document.removeEventListener('keydown', keyHandler);
+      if (callback) callback();
+    };
+    const overlayHandler = (e) => {
+      if (e.target === genericAlertModal) closeHandler();
+    };
+    const keyHandler = (e) => {
+      if (e.key === 'Escape' || e.key === 'Enter') closeHandler();
+    };
+    btnCloseGenericAlert.addEventListener('click', closeHandler);
+    genericAlertModal.addEventListener('click', overlayHandler);
+    document.addEventListener('keydown', keyHandler);
+  } else {
+    alert(message);
+    if (callback) callback();
+  }
+}
 
 // 効果音・BGMファイルの事前読み込み
 const bgmSound = new Audio('BGM/rAwTell Owk.mp3');
@@ -286,6 +458,9 @@ function initGame(selectedPlayerColor) {
     const diffRadios = document.getElementsByName('cpu-difficulty-normal');
     if (diffRadios.length) { for (const radio of diffRadios) { if (radio.checked) cpuDifficulty = parseInt(radio.value, 10); } }
   }
+  if (cpuDifficulty === 15 || cpuDifficulty === 16) {
+    loadEgaroucidAI();
+  }
 
   // 盤面をすべて空(EMPTY)の配列で初期化し、中央の4マスに初期の石を配置
   board = Array(ROWS).fill().map(() => Array(COLS).fill(EMPTY));
@@ -310,21 +485,55 @@ function initGame(selectedPlayerColor) {
   passModal.style.display = 'none'; confirmSurrenderModal.style.display = 'none'; surrenderBtn.style.display = 'block';
 
   // スコアボード上のUIテキストを正しい色に設定
-  playerLabelEl.textContent = opponentType === 'pvp' ? `プレイヤー1 (${playerColor === BLACK ? '黒' : '白'})` : `あなた (${playerColor === BLACK ? '黒' : '白'})`;
-  cpuLabelEl.textContent = opponentType === 'pvp' ? `プレイヤー2 (${cpuColor === BLACK ? '黒' : '白'})` : `${getCpuName()} (${cpuColor === BLACK ? '黒' : '白'})`;
+  if (window.isOnlineMode) {
+    const myName = window.formatDisplayName ? window.formatDisplayName(window.localPlayerName) : window.localPlayerName;
+    const opName = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : window.remotePlayerName;
+    playerLabelEl.textContent = `${myName} (${playerColor === BLACK ? '黒' : '白'})`;
+    cpuLabelEl.textContent = `${opName} (${cpuColor === BLACK ? '黒' : '白'})`;
+  } else {
+    playerLabelEl.textContent = opponentType === 'pvp' ? `プレイヤー1 (${playerColor === BLACK ? '黒' : '白'})` : `あなた (${playerColor === BLACK ? '黒' : '白'})`;
+    cpuLabelEl.textContent = opponentType === 'pvp' ? `プレイヤー2 (${cpuColor === BLACK ? '黒' : '白'})` : `${getCpuName()} (${cpuColor === BLACK ? '黒' : '白'})`;
+  }
   document.querySelector('#player-score-card .score-avatar').className = `score-avatar ${playerColor === BLACK ? 'black-disc' : 'white-disc'}`;
   document.querySelector('#cpu-score-card .score-avatar').className = `score-avatar ${cpuColor === BLACK ? 'black-disc' : 'white-disc'}`;
+
+  // ネット対戦時の持ち時間タイマー初期化 (10分 = 600秒)
+  if (onlineGameTimer) {
+    clearInterval(onlineGameTimer);
+    onlineGameTimer = null;
+  }
+  playerTimeLeft = DEFAULT_TIME_LIMIT;
+  cpuTimeLeft = DEFAULT_TIME_LIMIT;
+  if (window.isOnlineMode) {
+    startOnlineTimer();
+  } else {
+    if (playerTimerEl) playerTimerEl.style.display = 'none';
+    if (cpuTimerEl) cpuTimerEl.style.display = 'none';
+  }
 
   // まじかるモードのみ、画面下にカードを描画表示してカードを配る
   document.getElementById('player-hand-area').style.display = isManosabaMode ? 'flex' : 'none';
   document.getElementById('cpu-hand-area').style.display = isManosabaMode ? 'flex' : 'none';
   targetBar.style.display = 'none';
   if (isManosabaMode) {
-    playerMagics = drawMagics(5, playerUsedMagicIds);
-    if (isSpecialMode && opponentType === 'cpu') {
+    if (window.isOnlineMode) {
+      // ネット対戦時：黒の手札と白の手札を別々にドローして手札重複を防ぐ
+      const blackHand = drawMagics(5, playerUsedMagicIds);
+      const whiteHand = drawMagics(5, cpuUsedMagicIds);
+
+      if (window.myOnlineColor === BLACK) {
+        playerMagics = blackHand; // 自分の手札（黒）
+        cpuMagics = whiteHand;    // 相手の手札（白）
+      } else {
+        playerMagics = whiteHand; // 自分の手札（白）
+        cpuMagics = blackHand;    // 相手の手札（黒）
+      }
+    } else if (isSpecialMode && opponentType === 'cpu') {
+      playerMagics = drawMagics(5, playerUsedMagicIds);
       cpuSpecialDeck = generateSpecialMagics(specialOpponent);
       cpuMagics = cpuSpecialDeck.splice(0, 5); // デッキから5枚だけを手札にする
     } else {
+      playerMagics = drawMagics(5, playerUsedMagicIds);
       cpuMagics = drawMagics(5, cpuUsedMagicIds);
     }
 
@@ -401,7 +610,7 @@ function drawMagics(count, usedIdsSet) {
   // 使用済みのカードはプールから除外する
   let available = [...ALL_MAGICS].filter(m => !(usedIdsSet && usedIdsSet.has(m.id)));
   // 2人プレイ(pvp)時および特殊モード時は、相手の魔法が公開情報のため「沢渡ココ(ID:12)」を除外する
-  if (opponentType === 'pvp' || isSpecialMode) { available = available.filter(m => m.id !== 12); }
+  if ((opponentType === 'pvp' && !window.isOnlineMode) || isSpecialMode) { available = available.filter(m => m.id !== 12); }
 
   const deck = available.sort(() => Math.random() - 0.5); // シャッフル
   for (let i = 0; i < count && i < deck.length; i++) {
@@ -463,9 +672,17 @@ function renderMagics(animateFlipTarget = false) {
 
     // カードを押したときの処理
     card.addEventListener('click', () => {
+      if (gameEnded) return;
+      if (m.used || isGlobal) return;
+
+      // 相手から黒部ナノカの魔法で封鎖されている場合
+      if (playerMagicBlocked > 0) {
+        showModalAlert(`現在、黒部ナノカの魔法でカードは使用できません。残り${playerMagicBlocked}ターン。`);
+        return;
+      }
+
       // 魔法が使えないタイミング（相手ターン中、CPU思考中、ターゲッティング強制中など）は反応をブロック
-      if (m.used || isGlobal || isCPUThinking || currentTurn !== playerColor || gameEnded || targetingState) return;
-      if (playerMagicBlocked > 0) { showModalAlert(`黒部ナノカの効果によりあと ${playerMagicBlocked} ターン魔法が使えません！`); return; }
+      if (isCPUThinking || currentTurn !== playerColor || targetingState) return;
 
       promptMagic(i); // ダイアログ表示へ
     });
@@ -482,7 +699,7 @@ function renderMagics(animateFlipTarget = false) {
     const card = document.createElement('div');
     card.className = 'magic-card' + (m.used || isGlobal ? ' used' : '');
 
-    const isFaceUp = opponentType === 'pvp' || cpuMagicRevealed;
+    const isFaceUp = (opponentType === 'pvp' && !window.isOnlineMode) || cpuMagicRevealed;
     if ((animateFlipTarget === 'all' || animateFlipTarget === 'cpu') && isFaceUp) card.classList.add('flip-in');
 
     const img = document.createElement('img');
@@ -493,16 +710,25 @@ function renderMagics(animateFlipTarget = false) {
     img.style.objectFit = 'cover';
     img.style.borderRadius = '8px';
     card.appendChild(img);
-    if (opponentType === 'pvp' || cpuMagicRevealed) {
+    if ((opponentType === 'pvp' && !window.isOnlineMode) || cpuMagicRevealed) {
       const tt = document.createElement('div'); tt.className = 'magic-tooltip'; tt.textContent = m.spell.desc;
       card.appendChild(tt);
     }
 
     // 2人プレイモードではクリックを許可する
-    if (opponentType === 'pvp') {
+    if (opponentType === 'pvp' && !window.isOnlineMode) {
       card.addEventListener('click', () => {
-        if (m.used || isGlobal || isCPUThinking || currentTurn !== cpuColor || gameEnded || targetingState) return;
-        if (cpuMagicBlocked > 0) { showModalAlert(`黒部ナノカの効果によりあと ${cpuMagicBlocked} ターン魔法が使えません！`); return; }
+        if (gameEnded) return;
+        if (m.used || isGlobal) return;
+
+        // プレイヤー2が黒部ナノカで封鎖されている場合
+        if (cpuMagicBlocked > 0) {
+          showModalAlert(`現在、黒部ナノカの魔法でカードは使用できません。残り${cpuMagicBlocked}ターン。`);
+          return;
+        }
+
+        if (isCPUThinking || currentTurn !== cpuColor || targetingState) return;
+
         promptMagic(i, true);
       });
     }
@@ -594,7 +820,7 @@ function distributeMagicsAnimation(onComplete) {
   setTimeout(() => {
     pSlots.forEach(s => s.classList.add('flip-out'));
 
-    const isCpuFaceUp = opponentType === 'pvp' || cpuMagicRevealed;
+    const isCpuFaceUp = (opponentType === 'pvp' && !window.isOnlineMode) || cpuMagicRevealed;
     if (isCpuFaceUp) {
       cSlots.forEach(s => s.classList.add('flip-out'));
     }
@@ -750,6 +976,12 @@ function getTargetingPromptText(state) {
  */
 function commitMagic(index, casterIsCpu, logicCallback, isMargo = false) {
   const magic = casterIsCpu ? cpuMagics[index] : playerMagics[index];
+  // ネット対戦時の同期用に使用した魔法情報を記録
+  if (!casterIsCpu) {
+    window.lastUsedSpellId = magic.spell.id;
+    window.lastUsedSpellName = magic.spell.name;
+    window.lastUsedMagicIndex = index;
+  }
 
   // 魔法実行時の効果音再生
   playMagicSound(magic.spell.id);
@@ -779,6 +1011,26 @@ function commitMagic(index, casterIsCpu, logicCallback, isMargo = false) {
 
   if (isAsync) return; // 非同期処理を含む場合はコールバック側で後続処理を行うためここで終了
   if (isMargo) {
+    if (window.isOnlineMode && window.netSendAction) {
+    window.netSendAction({
+      type: 'magic',
+      spellId: window.lastUsedSpellId || 0,
+      spellName: window.lastUsedSpellName || "魔法",
+      boardJson: JSON.stringify(board),
+      fireStatesJson: JSON.stringify(fireStates),
+      specialStonesJson: JSON.stringify(specialStones),
+      usedIndex: window.lastUsedMagicIndex,
+      forcedOpponentMove: forcedOpponentMove,
+      bannedOpponentMove: bannedOpponentMove,
+      myMagicBlocked: playerMagicBlocked,
+      opMagicBlocked: cpuMagicBlocked,
+      casterPlayerMagicsJson: JSON.stringify(playerMagics),
+      casterCpuMagicsJson: JSON.stringify(cpuMagics),
+      casterPlayerUsedIds: Array.from(playerUsedMagicIds),
+      casterCpuUsedIds: Array.from(cpuUsedMagicIds),
+      timeLeft: playerTimeLeft
+    });
+    }
     // マーゴを初めて手札から使用して他人の魔法をコピーした瞬間は、
     // まだマーゴ自体を「消費した」ことにはせず、手札を上書きして一旦戻す。(次にその魔法を使うときに消費判定になる)
     if (casterIsCpu) { cpuMagics[index].used = false; cpuUsedMagicIds.delete(7); }
@@ -815,6 +1067,32 @@ function endMagicTurn() {
   isCPUThinking = false;
 
   // ターンを交代
+  // ネット対戦時は魔法の効果結果を相手に同期送信
+  if (window.isOnlineMode && window.netSendAction) {
+    window.netSendAction({
+      type: 'magic',
+      spellId: window.lastUsedSpellId || 0,
+      spellName: window.lastUsedSpellName || "魔法",
+      boardJson: JSON.stringify(board),
+      fireStatesJson: JSON.stringify(fireStates),
+      specialStonesJson: JSON.stringify(specialStones),
+      board: board,
+      fireStates: fireStates,
+      specialStones: specialStones,
+      usedIndex: window.lastUsedMagicIndex,
+      forcedOpponentMove: forcedOpponentMove,
+      bannedOpponentMove: bannedOpponentMove,
+      myMagicBlocked: playerMagicBlocked,
+      opMagicBlocked: cpuMagicBlocked,
+      casterPlayerMagicsJson: JSON.stringify(playerMagics),
+      casterCpuMagicsJson: JSON.stringify(cpuMagics),
+      casterPlayerMagics: playerMagics,
+      casterCpuMagics: cpuMagics,
+      casterPlayerUsedIds: Array.from(playerUsedMagicIds),
+      casterCpuUsedIds: Array.from(cpuUsedMagicIds),
+      timeLeft: playerTimeLeft
+    });
+  }
   currentTurn = currentTurn === BLACK ? WHITE : BLACK;
   updateGameState(); // ボードの状態を評価して相手の処理へ
 }
@@ -1149,6 +1427,9 @@ function handleCellClick(r, c) {
   // pvpモード時は currentTurn に関係なく(どちらの番でも) 人間のクリックを許可する
   if (isCPUThinking || (opponentType === 'cpu' && currentTurn !== playerColor)) return;
 
+  // ネット対戦時、自分のターンでなければクリックをブロック
+  if (window.isOnlineMode && currentTurn !== window.myOnlineColor) return;
+
   // 今クリックしようとしているマスが、通常でちゃんと「置けるマス(validMoves)」かどうか調べる
   const move = validMoves.find(m => m.r === r && m.c === c);
   if (move) {
@@ -1159,10 +1440,28 @@ function handleCellClick(r, c) {
       }
     }
 
+    // ネット対戦時は着手を相手に送信 (持ち時間の同期情報も含める)
+    if (window.isOnlineMode && window.netSendAction) {
+      window.netSendAction({ type: 'place', r, c, timeLeft: playerTimeLeft });
+    }
+
     // 有効なら石を置くオセロの基本処理へ
     executeMove(move);
   }
 }
+
+// 相手からの着手を盤面に反映するグローバル関数
+window.processRemoteMove = function(r, c, remoteTimeLeft) {
+  if (gameEnded) return;
+  if (typeof remoteTimeLeft === 'number') {
+    cpuTimeLeft = remoteTimeLeft;
+    updateTimerDisplay();
+  }
+  const move = validMoves.find(m => m.r === r && m.c === c);
+  if (move) {
+    executeMove(move);
+  }
+};
 
 /**
  * 対象のマスに石を置き、挟んだ敵の石をひっくり返します。
@@ -1279,6 +1578,7 @@ function updateGameState() {
   saveHistoryState();
   updateBoardDOM();
   renderMagics();
+  updateTimerDisplay();
 
   // 黒と白それぞれの正確な石の数をカウントし、ヘッダーに表示する
   let blackCount = 0, whiteCount = 0;
@@ -1356,13 +1656,28 @@ function updateGameState() {
 }
 
 function updateTurnUI() {
+  if (window.isOnlineMode) {
+    if (currentTurn === window.myOnlineColor) {
+      turnIndicator.textContent = "あなたの番";
+      turnIndicator.className = "turn-indicator";
+      playerScoreCard.classList.remove('inactive');
+      cpuScoreCard.classList.add('inactive');
+    } else {
+      turnIndicator.textContent = "相手の番";
+      turnIndicator.className = "turn-indicator cpu-turn";
+      playerScoreCard.classList.add('inactive');
+      cpuScoreCard.classList.remove('inactive');
+    }
+    return;
+  }
+
   if (currentTurn === playerColor) {
     turnIndicator.textContent = opponentType === 'pvp' ? "プレイヤー1の番" : "あなたの番";
     turnIndicator.className = "turn-indicator";
     playerScoreCard.classList.remove('inactive');
     cpuScoreCard.classList.add('inactive');
   } else {
-    turnIndicator.textContent = opponentType === 'pvp' ? "プレイヤー2の番" : `${getCpuName()} 考え中...`;
+    turnIndicator.textContent = opponentType === 'pvp' ? "プレイヤー2の番" : `${getCpuName()} の番`;
     turnIndicator.className = "turn-indicator cpu-turn";
     playerScoreCard.classList.add('inactive');
     cpuScoreCard.classList.remove('inactive');
@@ -1881,18 +2196,40 @@ function showPassMessage(passedPlayer) {
 function surrenderGame() {
   if (gameEnded) return;
   gameEnded = true; isCPUThinking = false; surrenderBtn.style.display = 'none';
+  if (onlineGameTimer) { clearInterval(onlineGameTimer); onlineGameTimer = null; }
   finalPlayerScore.textContent = playerScores[playerColor]; finalCpuScore.textContent = playerScores[cpuColor];
+  const fpLabel = document.getElementById('final-player-label');
+  const fcLabel = document.getElementById('final-cpu-label');
+  if (fpLabel && fcLabel) {
+    if (window.isOnlineMode) {
+      fpLabel.textContent = window.formatDisplayName ? window.formatDisplayName(window.localPlayerName) : "あなた";
+      fcLabel.textContent = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "相手";
+    } else {
+      fpLabel.textContent = opponentType === 'pvp' ? "プレイヤー1" : "あなた";
+      fcLabel.textContent = opponentType === 'pvp' ? "プレイヤー2" : getCpuName();
+    }
+  }
 
-  if (opponentType === 'pvp') {
+  if (window.isOnlineMode) {
+    if (window.netSendAction) {
+      window.netSendAction({ type: 'surrender' });
+    }
+    const opName = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "相手";
+    winnerText.textContent = `投了 (${opName}の勝ち)`;
+    winnerText.className = "lose";
+  } else if (opponentType === 'pvp') {
     const winnerName = currentTurn === playerColor ? "プレイヤー2" : "プレイヤー1";
     winnerText.textContent = `投了 (${winnerName}の勝ち)`;
+    winnerText.className = "lose";
   } else {
     winnerText.textContent = `投了 (${getCpuName()}の勝ち)`;
+    winnerText.className = "lose";
   }
-  winnerText.className = "lose";
+
   const copyBtn = document.getElementById('btn-copy-record');
   if (copyBtn) {
-    if (!isManosabaMode && !isSpecialMode && opponentType === 'cpu') {
+    const isNormal = (!isManosabaMode && !isSpecialMode);
+    if (isNormal && (opponentType === 'cpu' || window.isOnlineMode)) {
       copyBtn.style.display = 'block';
     } else {
       copyBtn.style.display = 'none';
@@ -1901,25 +2238,238 @@ function surrenderGame() {
   gameOverModal.style.display = 'flex';
 }
 
+// 相手が投了した時のハンドラ
+// 相手が魔法を使用したときの同期ハンドラ
+window.handleRemoteMagic = function(data) {
+  if (gameEnded) return;
+
+  // 魔法使用効果音を再生
+  if (data.spellId) {
+    playMagicSound(data.spellId);
+  }
+
+  const isHiro = data.spellId === 2;
+
+  // 相手の手札（cpuMagics）の該当カードを使用済みにする（ヒロ以外）
+  if (!isHiro && data.usedIndex !== undefined && cpuMagics[data.usedIndex]) {
+    cpuMagics[data.usedIndex].used = true;
+  }
+
+  // 二階堂ヒロ（ID: 2）の場合、手札の反映はモーダル確認後のシャッフルアニメーションで行うため一時保存
+  let pendingCpuMagics = null;
+  let pendingPlayerMagics = null;
+  let pendingCpuUsedIds = null;
+  let pendingPlayerUsedIds = null;
+
+  if (data.casterPlayerMagicsJson) {
+    pendingCpuMagics = JSON.parse(data.casterPlayerMagicsJson);
+  } else if (data.casterPlayerMagics) {
+    pendingCpuMagics = JSON.parse(JSON.stringify(data.casterPlayerMagics));
+  }
+
+  if (data.casterCpuMagicsJson) {
+    pendingPlayerMagics = JSON.parse(data.casterCpuMagicsJson);
+  } else if (data.casterCpuMagics) {
+    pendingPlayerMagics = JSON.parse(JSON.stringify(data.casterCpuMagics));
+  }
+
+  if (data.casterPlayerUsedIds) {
+    pendingCpuUsedIds = new Set(data.casterPlayerUsedIds);
+  }
+  if (data.casterCpuUsedIds) {
+    pendingPlayerUsedIds = new Set(data.casterCpuUsedIds);
+  }
+
+  // 二階堂ヒロ以外は即座に手札配列を同期
+  if (!isHiro) {
+    if (pendingCpuMagics) cpuMagics = pendingCpuMagics;
+    if (pendingPlayerMagics) playerMagics = pendingPlayerMagics;
+    if (pendingCpuUsedIds) cpuUsedMagicIds = pendingCpuUsedIds;
+    if (pendingPlayerUsedIds) playerUsedMagicIds = pendingPlayerUsedIds;
+  }
+
+  // 盤面と特殊効果状態を確実に復元
+  if (data.boardJson) {
+    board = JSON.parse(data.boardJson);
+  } else if (data.board) {
+    board = JSON.parse(JSON.stringify(data.board));
+  }
+
+  if (data.fireStatesJson) {
+    fireStates = JSON.parse(data.fireStatesJson);
+  } else if (data.fireStates) {
+    fireStates = JSON.parse(JSON.stringify(data.fireStates));
+  }
+
+  if (data.specialStonesJson) {
+    specialStones = JSON.parse(data.specialStonesJson);
+  } else if (data.specialStones) {
+    specialStones = JSON.parse(JSON.stringify(data.specialStones));
+  }
+
+  forcedOpponentMove = data.forcedOpponentMove || null;
+  bannedOpponentMove = data.bannedOpponentMove || null;
+
+  playerMagicBlocked = data.opMagicBlocked || 0;
+  cpuMagicBlocked = data.myMagicBlocked || 0;
+
+  if (typeof data.timeLeft === 'number') {
+    cpuTimeLeft = data.timeLeft;
+    updateTimerDisplay();
+  }
+
+  lastPlacedMove = { type: 'magic', player: currentTurn };
+  currentMoveHistory += "XX";
+
+  // モーダルが出る前に即座に盤面を更新（ヒロ以外は手札も即時更新）
+  updateBoardDOM();
+  if (!isHiro) {
+    renderMagics();
+  }
+
+  // モーダルでお知らせ
+  const modal = document.getElementById('cpu-magic-modal');
+  const msgEl = document.getElementById('cpu-magic-message');
+  const btnClose = document.getElementById('btn-close-cpu-magic');
+
+  if (modal && msgEl && btnClose) {
+    const opName = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "相手";
+    msgEl.textContent = `${opName} が 魔法「${data.spellName}」を使用しました！`;
+    modal.style.display = 'flex';
+
+    const closeHandler = () => {
+      modal.style.display = 'none';
+      btnClose.removeEventListener('click', closeHandler);
+
+      // 二階堂ヒロ(ID: 2)の場合はモーダル確認後に山札戻し→配りアニメーションを経てカードを更新
+      if (isHiro) {
+        isCPUThinking = true;
+        returnMagicsToDeckAnimation(() => {
+          // 山札に戻りきったタイミングで新しい手札配列を適用
+          if (pendingCpuMagics) cpuMagics = pendingCpuMagics;
+          if (pendingPlayerMagics) playerMagics = pendingPlayerMagics;
+          if (pendingCpuUsedIds) cpuUsedMagicIds = pendingCpuUsedIds;
+          if (pendingPlayerUsedIds) playerUsedMagicIds = pendingPlayerUsedIds;
+
+          distributeMagicsAnimation(() => {
+            isCPUThinking = false;
+            renderMagics('all');
+            updateBoardDOM();
+            currentTurn = window.myOnlineColor; // 自分の番へ交代！
+            updateGameState();
+          });
+        });
+      } else {
+        renderMagics();
+        updateBoardDOM();
+        currentTurn = window.myOnlineColor; // 自分の番へ交代！
+        updateGameState();
+      }
+    };
+    btnClose.addEventListener('click', closeHandler);
+  } else {
+    if (isHiro) {
+      if (pendingCpuMagics) cpuMagics = pendingCpuMagics;
+      if (pendingPlayerMagics) playerMagics = pendingPlayerMagics;
+      if (pendingCpuUsedIds) cpuUsedMagicIds = pendingCpuUsedIds;
+      if (pendingPlayerUsedIds) playerUsedMagicIds = pendingPlayerUsedIds;
+    }
+    renderMagics();
+    updateBoardDOM();
+    currentTurn = window.myOnlineColor; // 自分の番へ交代！
+    updateGameState();
+  }
+};
+
+// 相手がマーゴでカードをコピーした時の同期ハンドラ
+window.handleRemoteMargoCopy = function(data) {
+  if (data.casterPlayerMagicsJson) {
+    cpuMagics = JSON.parse(data.casterPlayerMagicsJson);
+    renderMagics();
+  } else if (data.casterPlayerMagics) {
+    cpuMagics = JSON.parse(JSON.stringify(data.casterPlayerMagics));
+    renderMagics();
+  }
+};
+
+window.handleRemoteSurrender = function() {
+  if (gameEnded) return;
+  gameEnded = true; isCPUThinking = false; surrenderBtn.style.display = 'none';
+  if (onlineGameTimer) { clearInterval(onlineGameTimer); onlineGameTimer = null; }
+  finalPlayerScore.textContent = playerScores[playerColor]; finalCpuScore.textContent = playerScores[cpuColor];
+  const fpLabel = document.getElementById('final-player-label');
+  const fcLabel = document.getElementById('final-cpu-label');
+  if (fpLabel && fcLabel) {
+    if (window.isOnlineMode) {
+      fpLabel.textContent = window.formatDisplayName ? window.formatDisplayName(window.localPlayerName) : "あなた";
+      fcLabel.textContent = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "相手";
+    } else {
+      fpLabel.textContent = opponentType === 'pvp' ? "プレイヤー1" : "あなた";
+      fcLabel.textContent = opponentType === 'pvp' ? "プレイヤー2" : getCpuName();
+    }
+  }
+
+  winnerText.textContent = "相手が投了しました (あなたの勝ち！)";
+  winnerText.className = "win";
+
+  const copyBtn = document.getElementById('btn-copy-record');
+  if (copyBtn) {
+    const isNormal = (!isManosabaMode && !isSpecialMode);
+    if (isNormal && (opponentType === 'cpu' || window.isOnlineMode)) {
+      copyBtn.style.display = 'block';
+    } else {
+      copyBtn.style.display = 'none';
+    }
+  }
+  gameOverModal.style.display = 'flex';
+};
+
 function endGame() {
   if (gameEnded) return;
   gameEnded = true; surrenderBtn.style.display = 'none';
+  if (onlineGameTimer) { clearInterval(onlineGameTimer); onlineGameTimer = null; }
   const pScore = playerScores[playerColor]; const cScore = playerScores[cpuColor];
   finalPlayerScore.textContent = pScore; finalCpuScore.textContent = cScore;
+  const fpLabel = document.getElementById('final-player-label');
+  const fcLabel = document.getElementById('final-cpu-label');
+  if (fpLabel && fcLabel) {
+    if (window.isOnlineMode) {
+      fpLabel.textContent = window.formatDisplayName ? window.formatDisplayName(window.localPlayerName) : "あなた";
+      fcLabel.textContent = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "相手";
+    } else {
+      fpLabel.textContent = opponentType === 'pvp' ? "プレイヤー1" : "あなた";
+      fcLabel.textContent = opponentType === 'pvp' ? "プレイヤー2" : getCpuName();
+    }
+  }
   isCPUThinking = false;
-  // 点数を比較して勝敗を決める
-  if (pScore > cScore) {
+
+  if (window.isOnlineMode) {
+    if (pScore > cScore) {
+      winnerText.textContent = "あなたの勝ち！";
+      winnerText.className = "win";
+    } else if (cScore > pScore) {
+      const opName = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "相手";
+      winnerText.textContent = `${opName}の勝ち！`;
+      winnerText.className = "lose";
+    } else {
+      winnerText.textContent = "引き分け！";
+      winnerText.className = "draw";
+    }
+  } else if (pScore > cScore) {
     winnerText.textContent = opponentType === 'pvp' ? "プレイヤー1の勝ち！" : "あなたの勝ち！";
     winnerText.className = "win";
-  }
-  else if (cScore > pScore) {
+  } else if (cScore > pScore) {
     winnerText.textContent = opponentType === 'pvp' ? "プレイヤー2の勝ち！" : `${getCpuName()}の勝ち！`;
     winnerText.className = "lose";
+  } else {
+    winnerText.textContent = "引き分け！";
+    winnerText.className = "draw";
   }
-  else { winnerText.textContent = "引き分け！"; winnerText.className = "draw"; }
+
   const copyBtn = document.getElementById('btn-copy-record');
   if (copyBtn) {
-    if (!isManosabaMode && !isSpecialMode && opponentType === 'cpu') {
+    const isNormal = (!isManosabaMode && !isSpecialMode);
+    if (isNormal && (opponentType === 'cpu' || window.isOnlineMode)) {
       copyBtn.style.display = 'block';
     } else {
       copyBtn.style.display = 'none';
@@ -2000,17 +2550,60 @@ document.getElementById('btn-show-rules')?.addEventListener('click', () => docum
 document.getElementById('btn-close-rules')?.addEventListener('click', () => document.getElementById('rules-modal').style.display = 'none');
 
 btnPlayBlack.addEventListener('click', () => {
-  bgmSound.play().catch(e => console.warn('BGM再生がブロックされました:', e));
+  bgmSound.play().catch(e => console.warn(e));
   initGame(BLACK);
 });
+
 btnPlayWhite.addEventListener('click', () => {
-  bgmSound.play().catch(e => console.warn('BGM再生がブロックされました:', e));
+  bgmSound.play().catch(e => console.warn(e));
   initGame(WHITE);
 });
+
+// ネット対戦：マッチング開始ボタン
+const btnStartMatching = document.getElementById('btn-start-matching');
+if (btnStartMatching) {
+  btnStartMatching.addEventListener('click', () => {
+    // 既にマッチング待機中であれば停止する
+    if (window.isMatchingWaiting) {
+      if (window.netCancelMatching) {
+        window.netCancelMatching();
+      }
+      return;
+    }
+
+    // マッチング開始処理
+    const playerName = document.getElementById('online-player-name').value.trim();
+    const password = document.getElementById('online-password').value.trim();
+    const statusMsg = document.getElementById('online-status-msg');
+
+    if (!playerName) {
+      if (statusMsg) statusMsg.textContent = "プレイヤー名を入力してください。";
+      return;
+    }
+
+    localStorage.setItem('othelloPlayerName', playerName);
+    if (statusMsg) statusMsg.textContent = "マッチング中...";
+
+    // 「マッチング停止」ボタンに切り替える
+    if (window.updateMatchingButtonUI) {
+      window.updateMatchingButtonUI(true);
+    }
+
+    bgmSound.play().catch(e => console.warn(e));
+    if (window.netMatchmake) window.netMatchmake(password, playerName);
+  });
+}
 surrenderBtn.addEventListener('click', () => { if (!gameEnded) confirmSurrenderModal.style.display = 'flex'; });
 restartBtn.addEventListener('click', () => {
   gameOverModal.style.display = 'none';
   titleScreenModal.style.display = 'flex';
+
+  window.isOnlineMode = false;
+  btnPlayBlack.disabled = false;
+  btnPlayWhite.disabled = false;
+  if (window.updateMatchingButtonUI) window.updateMatchingButtonUI(false);
+  const statusMsg = document.getElementById('online-status-msg');
+  if (statusMsg) statusMsg.textContent = "";
 
   // タイトルを再表示
   const gameHeader = document.getElementById('game-header');
@@ -2049,10 +2642,36 @@ function updateModeUI() {
   const manosabaContainer = document.getElementById('manosaba-opponent-container');
   const specialContainer = document.getElementById('special-opponent-container');
   const specialModeLabel = document.getElementById('special-mode-label');
+  const onlineSettings = document.getElementById('online-settings');
+  const localButtons = document.getElementById('local-play-buttons');
+  const onlineButtons = document.getElementById('online-play-buttons');
   const opType = document.querySelector('input[name="opponent-type"]:checked')?.value || 'cpu';
   let mode = document.querySelector('input[name="game-mode"]:checked')?.value || 'normal';
 
-  if (opType === 'pvp') {
+  // ネット対戦用設定と開始ボタンの表示切替
+  if (onlineSettings) {
+    onlineSettings.style.display = opType === 'online' ? 'block' : 'none';
+    if (opType !== 'online' && window.isMatchingWaiting && window.netCancelMatching) { window.netCancelMatching(); }
+    if (opType === 'online') {
+      const savedName = localStorage.getItem('othelloPlayerName') || '';
+      const nameInput = document.getElementById('online-player-name');
+      if (nameInput && !nameInput.value) {
+        nameInput.value = savedName;
+      }
+    }
+  }
+
+  if (localButtons && onlineButtons) {
+    if (opType === 'online') {
+      localButtons.style.display = 'none';
+      onlineButtons.style.display = 'block';
+    } else {
+      localButtons.style.display = 'flex';
+      onlineButtons.style.display = 'none';
+    }
+  }
+
+  if (opType === 'pvp' || opType === 'online') {
     if (specialModeLabel) specialModeLabel.style.display = 'none';
     if (mode === 'special') {
       document.querySelector('input[name="game-mode"][value="normal"]').checked = true;
@@ -2086,8 +2705,18 @@ function updateModeUI() {
 document.getElementsByName('opponent-type').forEach(radio => radio.addEventListener('change', updateModeUI));
 document.getElementsByName('game-mode').forEach(radio => radio.addEventListener('change', updateModeUI));
 
+// 二階堂ヒロ(裏) 選択時に裏でEgaroucid AIを非同期ロード
+function checkLazyLoadAI() {
+  const selectedNormalDiff = document.querySelector('input[name="cpu-difficulty-normal"]:checked');
+  if (selectedNormalDiff && (selectedNormalDiff.value === '16' || selectedNormalDiff.value === '15')) {
+    loadEgaroucidAI();
+  }
+}
+document.getElementsByName('cpu-difficulty-normal').forEach(radio => radio.addEventListener('change', checkLazyLoadAI));
+
 // 初期状態反映
 updateModeUI();
+checkLazyLoadAI();
 
 function margoMassCopy(callback) {
   if (isSpecialMode && opponentType === 'cpu' && getCpuName() === '宝生マーゴ') {
@@ -2119,3 +2748,15 @@ function margoMassCopy(callback) {
     if (callback) callback();
   }
 }
+document.querySelectorAll('input[name="opponent-type"]').forEach(radio => {
+  radio.addEventListener('change', (e) => {
+    const onlineSettings = document.getElementById('online-settings');
+    if (onlineSettings) {
+      onlineSettings.style.display = e.target.value === 'online' ? 'block' : 'none';
+      if (e.target.value === 'online') {
+        const savedName = localStorage.getItem('othelloPlayerName') || '';
+        document.getElementById('online-player-name').value = savedName;
+      }
+    }
+  });
+});

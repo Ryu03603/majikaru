@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 
 <head>
@@ -59,6 +59,7 @@
         <div class="score-details">
           <div class="score-label" id="player-label">あなた (黒)</div>
           <div class="score-value" id="player-score">2</div>
+          <div class="online-timer" id="player-timer" style="display: none;">10:00</div>
         </div>
       </div>
 
@@ -70,6 +71,7 @@
         <div class="score-details right-align">
           <div class="score-label" id="cpu-label">CPU (白)</div>
           <div class="score-value" id="cpu-score">2</div>
+          <div class="online-timer" id="cpu-timer" style="display: none;">10:00</div>
         </div>
         <div class="score-avatar white-disc"></div>
       </div>
@@ -112,6 +114,26 @@
             <div class="radio-button-group">
               <label class="radio-btn"><input type="radio" name="opponent-type" value="cpu" checked><span>1人で対戦(CPU)</span></label>
               <label class="radio-btn"><input type="radio" name="opponent-type" value="pvp"><span>2人で対戦(対人)</span></label>
+              <label class="radio-btn"><input type="radio" name="opponent-type" value="online"><span>ネット対戦</span></label>
+            </div>
+          </div>
+
+          <div class="setting-section" id="online-settings" style="display: none;">
+            <div class="setting-title">ネット対戦設定</div>
+            <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+              <div>
+                <label style="color: #cbd5e1; font-size: 0.9rem; margin-bottom: 4px; display: block;">プレイヤー名</label>
+                <input type="text" id="online-player-name" placeholder="名前を入力" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #475569; background: #1e293b; color: white;">
+              </div>
+              <div>
+                <label style="color: #cbd5e1; font-size: 0.9rem; margin-bottom: 4px; display: block;">合言葉 (空欄でランダムマッチ)</label>
+                <input type="text" id="online-password" placeholder="合言葉を入力 (空欄でランダムマッチ)" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #475569; background: #1e293b; color: white;">
+                <div style="font-size: 0.8rem; color: #94a3b8; line-height: 1.5; margin-top: 6px;">
+                  ※合言葉を入力しない場合は、同じ対戦モードの誰かと<strong>ランダムマッチ</strong>します。<br>
+                  ※先手(黒)・後手(白)はランダムで決定されます。
+                </div>
+              </div>
+              <div id="online-status-msg" style="color: #fbbf24; font-size: 0.9rem; min-height: 20px;"></div>
             </div>
           </div>
 
@@ -161,9 +183,12 @@
             style="width: 100%; margin-top: 12px; color: #fcd34d; border-color: rgba(251, 191, 36, 0.4); margin-bottom: 4px; cursor: pointer;">まじかるモードのルール・魔法一覧</button>
           <div style="font-size: 0.75rem; color: #94a3b8; text-align: center; margin-bottom: 24px;">※魔法のネタバレを含みます。</div>
         </div>
-        <div class="button-group">
+        <div class="button-group" id="local-play-buttons">
           <button id="btn-play-black" class="primary-btn">先手 (黒) でプレイ</button>
           <button id="btn-play-white" class="primary-btn secondary-btn">後手 (白) でプレイ</button>
+        </div>
+        <div class="button-group" id="online-play-buttons" style="display: none;">
+          <button id="btn-start-matching" class="primary-btn" style="width: 100%; background: linear-gradient(135deg, #3b82f6, #1d4ed8); font-size: 1.1rem; padding: 12px;">マッチング開始</button>
         </div>
       </div>
     </div>
@@ -221,8 +246,8 @@
       <div class="modal-content glass-panel">
         <h2 id="winner-text">You Win!</h2>
         <div class="final-score">
-          <p>あなた: <span id="final-player-score"></span></p>
-          <p>CPU: <span id="final-cpu-score"></span></p>
+          <p><span id="final-player-label">あなた</span>: <span id="final-player-score"></span></p>
+          <p><span id="final-cpu-label">CPU</span>: <span id="final-cpu-score"></span></p>
         </div>
         <div style="display: flex; gap: 16px; justify-content: center; margin-top: 16px; flex-direction: column;">
           <button id="btn-copy-record" class="primary-btn secondary-btn" style="display: none;">棋譜をコピー</button>
@@ -276,7 +301,7 @@
           <li><strong style="color: #fcd34d;">佐伯ミリア（入れ替わり）：</strong> 盤面上の自分の石1つと、相手の石1つの場所を入れ替える。</li>
           <li><strong style="color: #fcd34d;">宝生マーゴ（モノマネ）：</strong> 相手の未使用魔法を1つコピーして自分のカードとして上書きする（※コピーしたとき、ターンは消費されない）。
           </li>
-          <li><strong style="color: #fcd34d;">黒部ナノカ（幻視）：</strong> 次の相手のターン中、相手は魔法を使用できなくなる。</li>
+          <li><strong style="color: #fcd34d;">黒部ナノカ（幻視）：</strong> 相手は3ターンの間、魔法を使用できなくなる。</li>
           <li><strong style="color: #fcd34d;">紫藤アリサ（発火）：</strong> 選択した石を発火させる。3ターン後にそこにある石は消滅する。</li>
           <li><strong style="color: #fcd34d;">橘シェリー（怪力）：</strong> 現在配置されているすべての石の数を維持したままランダムなマスに置き直す。</li>
           <li><strong style="color: #fcd34d;">遠野ハンナ（浮遊）：</strong> 盤面上の任意の石1つを、別の空いているマスへ移動させる。</li>
@@ -286,6 +311,34 @@
 
         <div style="text-align: center;">
           <button id="btn-close-rules" class="primary-btn" style="padding: 10px 32px;">閉じる</button>
+        </div>
+      </div>
+    </div>
+
+        <!-- Match Confirmation Modal -->
+    <div class="modal-overlay" id="match-confirm-modal" style="display: none; z-index: 300000;">
+      <div class="modal-content glass-panel" style="max-width: 400px; padding: 24px;">
+        <h2 style="font-size: 1.6rem; margin-bottom: 16px; color: #fbbf24; text-align: center;">マッチング完了！</h2>
+        <div style="background: rgba(15, 23, 42, 0.6); padding: 16px; border-radius: 8px; margin-bottom: 20px; line-height: 1.8; text-align: left;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+            <span style="color: #94a3b8;">対戦モード:</span>
+            <strong id="match-game-mode" style="color: #fcd34d;">通常モード</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+            <span style="color: #94a3b8;">あなた:</span>
+            <strong id="match-my-name" style="color: #f8fafc;">あなた (黒)</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span style="color: #94a3b8;">対戦相手:</span>
+            <strong id="match-opponent-name" style="color: #38bdf8;">相手 (白)</strong>
+          </div>
+        </div>
+        <div style="text-align: center; margin-bottom: 20px;">
+          <p style="font-size: 1.25rem; color: #38bdf8; font-weight: bold; margin: 0;">対戦開始まで: <span id="match-countdown" style="font-size: 1.5rem; color: #fbbf24;">10</span> 秒</p>
+        </div>
+        <div class="button-group" style="flex-direction: row; justify-content: center; gap: 16px;">
+          <button id="btn-cancel-match" class="primary-btn secondary-btn" style="flex: 1;">やめる</button>
+          <button id="btn-start-match" class="primary-btn" style="flex: 1; background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3);">対戦開始</button>
         </div>
       </div>
     </div>
@@ -320,6 +373,10 @@
 
   </div>
 
+    <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <script src="firebase-setup.js"></script>
   <script src="script.js"></script>
 </body>
 

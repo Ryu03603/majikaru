@@ -743,28 +743,34 @@ h1 {
     display: none !important;
   }
 }
+
 /* --- ラジオボタンのボタン風デザイン --- */
 .setting-section {
   margin-bottom: 16px;
 }
+
 .setting-title {
   font-size: 0.95rem;
   color: #94a3b8;
   margin-bottom: 8px;
   font-weight: bold;
 }
+
 .radio-button-group {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
+
 .radio-btn {
   display: inline-flex;
   cursor: pointer;
 }
+
 .radio-btn input[type="radio"] {
   display: none;
 }
+
 .radio-btn span {
   padding: 8px 12px;
   font-size: 0.95rem;
@@ -775,10 +781,12 @@ h1 {
   transition: all 0.2s ease;
   user-select: none;
 }
+
 .radio-btn:hover span {
   background: rgba(255, 255, 255, 0.15);
 }
-.radio-btn input[type="radio"]:checked + span {
+
+.radio-btn input[type="radio"]:checked+span {
   background: linear-gradient(135deg, #10b981, #059669);
   border-color: #34d399;
   color: #fff;
@@ -787,25 +795,62 @@ h1 {
 }
 
 /* モード専用の色分け */
-.mode-group .mode-manosaba input[type="radio"]:checked + span {
+.mode-group .mode-manosaba input[type="radio"]:checked+span {
   background: linear-gradient(135deg, #f59e0b, #d97706);
   border-color: #fbbf24;
   box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
 }
-.mode-group .mode-special input[type="radio"]:checked + span {
+
+.mode-group .mode-special input[type="radio"]:checked+span {
   background: linear-gradient(135deg, #f43f5e, #e11d48);
   border-color: #fb7185;
   box-shadow: 0 2px 8px rgba(244, 63, 94, 0.4);
 }
-.manosaba-group input[type="radio"]:checked + span {
+
+.manosaba-group input[type="radio"]:checked+span {
   background: linear-gradient(135deg, #f59e0b, #d97706);
   border-color: #fbbf24;
 }
-.special-group input[type="radio"]:checked + span {
+
+.special-group input[type="radio"]:checked+span {
   background: linear-gradient(135deg, #f43f5e, #e11d48);
   border-color: #fb7185;
 }
+
 /* タイトル画面のモーダル高さ固定（ガタつき防止） */
 .title-modal .mode-selector {
   min-height: 400px;
+}
+
+/* タイマー処理 */
+.online-timer {
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  margin-top: 2px;
+  transition: color 0.3s ease;
+}
+
+.online-timer.active-timer {
+  color: #fbbf24;
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
+}
+
+.online-timer.danger-timer {
+  color: #ef4444;
+  animation: pulse-timer-danger 1s infinite alternate;
+}
+
+@keyframes pulse-timer-danger {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0.65;
+    transform: scale(1.04);
+  }
 }
