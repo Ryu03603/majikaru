@@ -144,15 +144,21 @@
         <div id="editor-screen" class="hidden">
             <h2 style="margin-top: 10px; font-size: 1.5rem; text-shadow: 0 0 10px #eab308; color: #eab308;">TIMELINE EDITOR</h2>
             <p style="color: #ccc; margin-bottom: 10px; font-size: 0.9rem;">
-                [マウス操作] 左クリック: 配置 / ドラッグ: 長押し配置 / 右クリック: 削除<br>
-                [キー操作] 再生中に D, F, J, K キーを押して配置 / 長押しでホールドノーツ配置 / 停止中に配置したいノーツのキーを押すと現在時間に配置<br>
-                [シーク] 空白部分を右クリックするとその時間にジャンプし、そこから再生できます。<br>
-                保存時は忘れずに「SAVE BEATMAP」を押してください。
+                [マウス操作] 左クリック: 配置 / ドラッグ: 長押し配置・移動 / 右クリック: 削除<br>
+                [キー操作] Space: 再生・停止 / D, F, J, K: 配置・ホールド / Ctrl+Z: 元に戻す / Ctrl+Y: やり直す<br>
+                [シーク] 空白部分を右クリックするとその時間にジャンプします。<br>
+                データ読み込みは「LOAD BEATMAP」、保存時は「SAVE BEATMAP」を押してください。
             </p>
             
             <div style="display: flex; gap: 15px; margin-bottom: 10px; align-items: center; justify-content: center;">
                 <button id="editor-play-btn" style="padding: 10px 20px; font-size: 1rem; background-color: #10b981;">▶ PLAY / PAUSE</button>
                 <button id="editor-stop-btn" style="padding: 10px 20px; font-size: 1rem; background-color: #ef4444;">■ STOP</button>
+                <button id="editor-undo-btn" style="padding: 10px 15px; font-size: 1rem; background-color: #4b5563; display: flex; align-items: center; gap: 4px;" title="元に戻す (Ctrl+Z)">
+                    <span>↩</span> UNDO
+                </button>
+                <button id="editor-redo-btn" style="padding: 10px 15px; font-size: 1rem; background-color: #4b5563; display: flex; align-items: center; gap: 4px;" title="やり直す (Ctrl+Y)">
+                    <span>↪</span> REDO
+                </button>
                 <button id="editor-zoom-in" style="padding: 10px 15px; font-size: 1rem; background-color: #4b5563; display: flex; align-items: center; justify-content: center;">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 200 199.995"><path fill="currentColor" d="M132.59.007a66.433,66.433,0,1,0,47.95,19.45A66.433,66.433,0,0,0,132.59.007ZM132.3,19.95A46.5,46.5,0,1,1,88.432,55.21,46.5,46.5,0,0,1,132.3,19.95Zm-4.632,16.264v24.1h-24.1V72.843h24.1V96.938H140.2V72.843h24.1l-.006-12.528H140.2v-24.1ZM68.311,116.089a14.948,14.948,0,0,0-9.913,4.366L4.376,174.477a14.948,14.948,0,1,0,21.143,21.137l54.022-54.022a14.947,14.947,0,0,0-11.23-25.5Z" transform="translate(0.001 0)"/></svg>
                 </button>
@@ -195,6 +201,8 @@
             
             <div style="display: flex; gap: 20px; margin-top: 20px;">
                 <button id="editor-save-btn" style="padding: 15px 30px; font-size: 1.2rem; background-color: #3b82f6;">💾 SAVE BEATMAP</button>
+                <button id="editor-load-btn" style="padding: 15px 30px; font-size: 1.2rem; background-color: #10b981;">📂 LOAD BEATMAP</button>
+                <input type="file" id="editor-load-file" accept=".json" style="display: none;">
                 <button id="editor-exit-btn" style="padding: 15px 30px; font-size: 1.2rem; background-color: #6b7280;">BACK TO TITLE</button>
             </div>
         </div>
@@ -214,7 +222,7 @@
 
     <audio id="bgm"></audio>
 
-    <script src="script.js?v=2"></script>
+    <script src="script.js?v=3"></script>
 </body>
 
 </html>

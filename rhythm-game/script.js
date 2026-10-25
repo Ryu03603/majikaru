@@ -30,12 +30,18 @@ const createMapBtn = document.getElementById('create-map-btn');
 const editorScreen = document.getElementById('editor-screen');
 const editorPlayBtn = document.getElementById('editor-play-btn');
 const editorStopBtn = document.getElementById('editor-stop-btn');
+const editorUndoBtn = document.getElementById('editor-undo-btn');
+const editorRedoBtn = document.getElementById('editor-redo-btn');
 const editorSaveBtn = document.getElementById('editor-save-btn');
+const editorLoadBtn = document.getElementById('editor-load-btn');
+const editorLoadFileInput = document.getElementById('editor-load-file');
 const editorExitBtn = document.getElementById('editor-exit-btn');
 const editorTimeEl = document.getElementById('editor-time');
 const recordingIndicator = document.getElementById('recording-indicator');
 const editorBpmInput = document.getElementById('editor-bpm');
 const editorGridSelect = document.getElementById('editor-grid');
+
+let currentAutoMap = [];
 
 let scoresDirHandle = null;
 const difficultyRadios = document.querySelectorAll('input[name="difficulty"]');
@@ -363,8 +369,10 @@ async function handleAudioLoad(url) {
         audioCtx.resume().catch(e => console.warn(e));
     }
 
-    beatmap = await analyzeAudioAndGenerateBeatmap(url, currentDifficulty);
-    beatmap.sort((a, b) => a.time - b.time);
+    const genMap = await analyzeAudioAndGenerateBeatmap(url, currentDifficulty);
+    genMap.sort((a, b) => a.time - b.time);
+    currentAutoMap = genMap;
+    beatmap = genMap;
     
     audioAnalysisDone = true;
     isAnalyzing = false;
@@ -394,9 +402,11 @@ audioUpload.addEventListener('change', (e) => {
         const objectURL = URL.createObjectURL(file);
         bgm.src = objectURL;
         
-        // 前の解析状態をリセット
+        // 前の解析状態と譜面をリセット
         audioAnalysisDone = false;
         isAnalyzing = false;
+        beatmap = [];
+        currentAutoMap = [];
         
         // スマホSafari対策: 明示的にloadを呼ぶ
         bgm.load(); 
@@ -529,7 +539,11 @@ async function startGame() {
         if (customMap) {
             console.log("最新のカスタム譜面を再ロードしました:", customMap);
             beatmap = customMap;
+        } else if (currentAutoMap && currentAutoMap.length > 0) {
+            beatmap = currentAutoMap;
         }
+    } else if (currentAutoMap && currentAutoMap.length > 0) {
+        beatmap = currentAutoMap;
     }
 
     // レーンモードに応じたUIとキーバインドの設定
@@ -994,12 +1008,63 @@ let recordedNotes = [];
 let editorUpdateId;
 let editorZoom = 0.2; // 1ms = 0.2px
 
+// Undo / Redo 履歴管理
+let undoStack = [];
+let redoStack = [];
+const MAX_HISTORY = 50;
+let dragStartSnapshot = null;
+
+function getNotesSnapshot() {
+    return JSON.parse(JSON.stringify(recordedNotes));
+}
+
+function saveState() {
+    undoStack.push(getNotesSnapshot());
+    if (undoStack.length > MAX_HISTORY) {
+        undoStack.shift();
+    }
+    redoStack = [];
+    updateUndoRedoButtons();
+}
+
+function undo() {
+    if (!isEditorMode || undoStack.length === 0) return;
+    redoStack.push(getNotesSnapshot());
+    recordedNotes = undoStack.pop();
+    renderTimelineNotes();
+    updateUndoRedoButtons();
+}
+
+function redo() {
+    if (!isEditorMode || redoStack.length === 0) return;
+    undoStack.push(getNotesSnapshot());
+    recordedNotes = redoStack.pop();
+    renderTimelineNotes();
+    updateUndoRedoButtons();
+}
+
+function updateUndoRedoButtons() {
+    if (editorUndoBtn) {
+        editorUndoBtn.disabled = undoStack.length === 0;
+        editorUndoBtn.style.opacity = undoStack.length === 0 ? '0.4' : '1';
+        editorUndoBtn.style.cursor = undoStack.length === 0 ? 'not-allowed' : 'pointer';
+    }
+    if (editorRedoBtn) {
+        editorRedoBtn.disabled = redoStack.length === 0;
+        editorRedoBtn.style.opacity = redoStack.length === 0 ? '0.4' : '1';
+        editorRedoBtn.style.cursor = redoStack.length === 0 ? 'not-allowed' : 'pointer';
+    }
+}
+
 const timelineWrapper = document.getElementById('timeline-wrapper');
 const timelineContent = document.getElementById('timeline-content');
 const timelinePlayhead = document.getElementById('timeline-playhead');
 const tlNotesContainer = document.getElementById('tl-notes-container');
 const editorZoomIn = document.getElementById('editor-zoom-in');
 const editorZoomOut = document.getElementById('editor-zoom-out');
+
+editorUndoBtn.addEventListener('click', undo);
+editorRedoBtn.addEventListener('click', redo);
 
 createMapBtn.addEventListener('click', () => {
     if (!scoresDirHandle) {
@@ -1011,6 +1076,10 @@ createMapBtn.addEventListener('click', () => {
     editorScreen.classList.remove('hidden');
     isEditorMode = true;
     recordedNotes = [];
+    undoStack = [];
+    redoStack = [];
+    dragStartSnapshot = null;
+    updateUndoRedoButtons();
     
     // エディタの初期化
     initEditor();
@@ -1192,6 +1261,9 @@ let tempCreatedNote = null;
 timelineContent.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return; // 左クリックのみ
     
+    // 操作前の状態を保持（Undo用）
+    dragStartSnapshot = getNotesSnapshot();
+    
     // ターゲットがノーツかリサイズハンドルか
     if (e.target.classList.contains('tl-note-resize')) {
         isDragging = true;
@@ -1289,6 +1361,19 @@ window.addEventListener('mouseup', () => {
     
     // 時間順にソートしておく
     recordedNotes.sort((a, b) => a.time - b.time);
+
+    // 操作によってノーツ状態に変化があればUndoスタックに保存
+    if (dragStartSnapshot) {
+        if (JSON.stringify(dragStartSnapshot) !== JSON.stringify(recordedNotes)) {
+            undoStack.push(dragStartSnapshot);
+            if (undoStack.length > MAX_HISTORY) {
+                undoStack.shift();
+            }
+            redoStack = [];
+            updateUndoRedoButtons();
+        }
+        dragStartSnapshot = null;
+    }
 });
 
 // 右クリックで削除
@@ -1297,6 +1382,7 @@ timelineContent.addEventListener('contextmenu', (e) => {
     if (e.target.classList.contains('tl-note') || e.target.classList.contains('tl-note-resize')) {
         const target = e.target.classList.contains('tl-note') ? e.target : e.target.parentElement;
         const id = target.dataset.id;
+        saveState(); // 削除前の状態を保存
         recordedNotes = recordedNotes.filter(n => n.id !== id);
         renderTimelineNotes();
     } else {
@@ -1319,34 +1405,67 @@ timelineContent.addEventListener('contextmenu', (e) => {
 let activeKeyHolds = {};
 
 window.addEventListener('keydown', (e) => {
-    if (isEditorMode && !e.repeat) {
-        const key = e.key;
-        if (KEY_MAP[key] !== undefined) {
-            const lane = KEY_MAP[key];
-            
-            // 既にそのレーンで長押し記録中の場合は追加しない（リピート誤爆防止）
-            if (activeKeyHolds[lane]) return;
-            
-            let timeMs = bgm.currentTime * 1000;
-            timeMs = snapToGrid(timeMs);
-            
-            const newNote = {
-                id: Date.now().toString() + Math.random(),
-                time: timeMs,
-                lane: lane,
-                type: 'tap',
-                duration: 0,
-                handled: false,
-                isHolding: false,
-                element: null
-            };
-            
-            recordedNotes.push(newNote);
-            activeKeyHolds[lane] = newNote;
-            renderTimelineNotes();
-            
-            // 視覚的フィードバック
-            lanes[lane].classList.add('active');
+    if (isEditorMode) {
+        // 入力フォーム操作時はキーボードショートカットを除外
+        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+            // スペースキーで再生/一時停止
+            if (e.code === 'Space' || e.key === ' ') {
+                e.preventDefault();
+                editorPlayBtn.click();
+                return;
+            }
+
+            // Ctrl+Z (Cmd+Z) で元に戻す / Ctrl+Shift+Z でやり直す
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    redo();
+                } else {
+                    undo();
+                }
+                return;
+            }
+
+            // Ctrl+Y (Cmd+Y) でやり直す
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+                e.preventDefault();
+                redo();
+                return;
+            }
+        }
+
+        if (!e.repeat) {
+            const key = e.key;
+            if (KEY_MAP[key] !== undefined) {
+                const lane = KEY_MAP[key];
+                
+                // 既にそのレーンで長押し記録中の場合は追加しない（リピート誤爆防止）
+                if (activeKeyHolds[lane]) return;
+                
+                // キーボードノーツ追加前の状態を保存
+                saveState();
+
+                let timeMs = bgm.currentTime * 1000;
+                timeMs = snapToGrid(timeMs);
+                
+                const newNote = {
+                    id: Date.now().toString() + Math.random(),
+                    time: timeMs,
+                    lane: lane,
+                    type: 'tap',
+                    duration: 0,
+                    handled: false,
+                    isHolding: false,
+                    element: null
+                };
+                
+                recordedNotes.push(newNote);
+                activeKeyHolds[lane] = newNote;
+                renderTimelineNotes();
+                
+                // 視覚的フィードバック
+                lanes[lane].classList.add('active');
+            }
         }
     }
 });
@@ -1427,4 +1546,63 @@ editorSaveBtn.addEventListener('click', async () => {
         console.error("保存エラー:", e);
         alert("ファイルの保存に失敗しました。フォルダのアクセス権限を確認してください。");
     }
+});
+
+// 譜面読み込み処理 (LOAD BEATMAP)
+editorLoadBtn.addEventListener('click', () => {
+    editorLoadFileInput.value = '';
+    editorLoadFileInput.click();
+});
+
+editorLoadFileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const data = JSON.parse(event.target.result);
+            const notesArray = Array.isArray(data) ? data : (data.notes || []);
+
+            if (!Array.isArray(notesArray)) {
+                alert("有効な譜面データが見つかりませんでした。");
+                return;
+            }
+
+            // 読み込み前の状態をUndoスタックに保存
+            saveState();
+
+            // ノーツの読み込み・復元
+            recordedNotes = notesArray.map(n => ({
+                id: Date.now().toString() + Math.random(),
+                time: typeof n.time === 'number' ? n.time : 0,
+                lane: typeof n.lane === 'number' ? n.lane : 0,
+                type: n.type || (n.duration > 0 ? 'hold' : 'tap'),
+                duration: typeof n.duration === 'number' ? n.duration : 0,
+                handled: false,
+                isHolding: false,
+                element: null
+            }));
+
+            // 時間順にソート
+            recordedNotes.sort((a, b) => a.time - b.time);
+
+            // タイムライン描画更新
+            renderTimelineNotes();
+
+            // 再生中なら停止して先頭へシーク
+            stopEditorPlay();
+            bgm.currentTime = 0;
+            timelinePlayhead.style.transform = `translateX(0px)`;
+            timelineWrapper.scrollLeft = 0;
+            editorTimeEl.textContent = "00:00.000";
+
+            updateUndoRedoButtons();
+            alert(`譜面データを読み込みました！（${recordedNotes.length} ノーツ）`);
+        } catch (err) {
+            console.error("JSON読み込みエラー:", err);
+            alert("譜面ファイルの読み込みに失敗しました。正しいJSONファイルか確認してください。");
+        }
+    };
+    reader.readAsText(file);
 });
