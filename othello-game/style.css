@@ -1,30 +1,19 @@
 /* ==========================================
-   1. 変数定義エリア (カラーテーマと定数)
+   1. Theme Variables and Reset
    ========================================== */
 :root {
-  /* 画面全体の背景色 (深いネイビー) */
   --bg-color: #0f172a;
-  /* 盤面の外枠・背景色 */
   --board-bg: #1e293b;
-  /* オセロ盤のマス目の色 (緑) */
   --cell-bg: #10b981;
-  /* マス目の縁取り色 */
   --cell-border: #059669;
-  /* 基本の文字色 (白) */
   --text-main: #f8fafc;
-  /* 薄い文字色 (スコアのラベルなど) */
   --text-muted: #cbd5e1;
-  /* メニューやカードの半透明背景 (グラスモーフィズム) */
   --glass-bg: rgba(30, 41, 59, 0.7);
-  /* メニューなどの微かな白い境界線 */
   --glass-border: rgba(255, 255, 255, 0.1);
-  /* 黒石の中央に近い色 */
   --disc-black: #111827;
-  /* 白石の中央に近い色 */
   --disc-white: #f8fafc;
 }
 
-/* 全要素のボックスサイズ計算を直感的にし、余白をリセット */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -32,13 +21,11 @@
 }
 
 /* ==========================================
-     2. 全体レイアウトと背景
-     ========================================== */
+   2. Layout and Background
+   ========================================== */
 body {
-  /* モダンですっきりとしたフォント */
   font-family: 'Inter', sans-serif;
   background-color: var(--bg-color);
-  /*  上から下へのグラデーション */
   background-image: radial-gradient(circle at 50% 0%, #1e293b 0%, #0f172a 100%);
   color: var(--text-main);
   min-height: 100vh;
@@ -53,7 +40,6 @@ body {
   padding: 20px;
   display: flex;
   flex-direction: column;
-  /* 内部要素間の隙間 */
   gap: 16px;
 }
 
@@ -61,29 +47,25 @@ header {
   text-align: center;
 }
 
-/* タイトル文字のグラデーション指定 */
 h1 {
   font-size: 2.5rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  /* 明るい緑から濃い緑へ */
   background: linear-gradient(135deg, #34d399, #10b981);
   -webkit-background-clip: text;
   background-clip: text;
-  /* 背景のグラデーションだけを文字色として見せる */
   -webkit-text-fill-color: transparent;
   margin-bottom: 0;
 }
 
 /* ==========================================
-     3. スコアボードとターン表示 UI
-     ========================================== */
+   3. Score Board and Turn Indicator UI
+   ========================================== */
 .game-info {
   display: flex;
   justify-content: space-between;
   align-items: center;
   background: var(--glass-bg);
-  /* 背景のぼかし効果 */
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--glass-border);
@@ -92,7 +74,6 @@ h1 {
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
 }
 
-/* スコアカード（黒・白それぞれのブロック） */
 .score-card {
   display: flex;
   align-items: center;
@@ -100,12 +81,10 @@ h1 {
   transition: opacity 0.3s ease;
 }
 
-/* ターンではない方のスコアを半透明にして目立たなくする */
 .score-card.inactive {
   opacity: 0.5;
 }
 
-/* スコア横に表示される石のアイコン */
 .score-avatar {
   width: 40px;
   height: 40px;
@@ -113,7 +92,6 @@ h1 {
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), inset 0 -2px 4px rgba(0, 0, 0, 0.2);
 }
 
-/* 黒・白石のグラデーションによる立体感の表現 */
 .black-disc {
   background: radial-gradient(circle at 30% 30%, #4b5563, var(--disc-black));
 }
@@ -144,7 +122,38 @@ h1 {
   font-weight: 700;
 }
 
-/* ターンの「あなたの番」表示エリア */
+/* Online match remaining time indicator */
+.online-timer {
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  margin-top: 2px;
+  transition: color 0.3s ease;
+}
+
+.online-timer.active-timer {
+  color: #fbbf24;
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
+}
+
+.online-timer.danger-timer {
+  color: #ef4444;
+  animation: pulse-timer-danger 1s infinite alternate;
+}
+
+@keyframes pulse-timer-danger {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0.65;
+    transform: scale(1.04);
+  }
+}
+
 .turn-indicator {
   font-size: 1.1rem;
   font-weight: 600;
@@ -157,7 +166,6 @@ h1 {
   transition: all 0.3s ease;
 }
 
-/* CPUターン中の表示 */
 .turn-indicator.cpu-turn {
   color: #94a3b8;
   background: rgba(148, 163, 184, 0.1);
@@ -165,19 +173,17 @@ h1 {
 }
 
 /* ==========================================
-     4. 盤面とマスの基本スタイル
+   4. Board and Cell Styles
    ========================================== */
 .board-container {
   display: flex;
   justify-content: center;
 }
 
-/* 8x8のグリッドレイアウトを定義 */
 .board {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(8, 1fr);
-  /* マス同士の隙間サイズ */
   gap: 2px;
   background-color: var(--board-bg);
   padding: 8px;
@@ -185,7 +191,6 @@ h1 {
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.05);
   width: 100%;
   max-width: 500px;
-  /* 正方形を維持する */
   aspect-ratio: 1 / 1;
 }
 
@@ -200,12 +205,10 @@ h1 {
   transition: all 0.2s ease;
 }
 
-/* マウスホバーでわずかに明るくする */
 .cell:hover {
   filter: brightness(1.1);
 }
 
-/* 置ける場所を示す半透明の黒い点（ヒント）  */
 .cell.valid-move::before {
   content: '';
   position: absolute;
@@ -216,22 +219,18 @@ h1 {
   z-index: 1;
 }
 
-/* ホバーで点が濃くなる */
 .cell.valid-move:hover::before {
   background-color: rgba(0, 0, 0, 0.3);
 }
 
-/* 石のコンテナ要素 (アニメーションやサイズ管理用) */
 .disc-container {
   width: 85%;
   height: 85%;
   position: relative;
   z-index: 2;
-  /* マスのクリックを妨げないようにする */
   pointer-events: none;
 }
 
-/* 新しく置かれた石が「スッ」と現れるアニメーション設定 */
 .disc-container.new {
   animation: dropIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
@@ -241,14 +240,12 @@ h1 {
     transform: scale(0);
     opacity: 0;
   }
-
   100% {
     transform: scale(1);
     opacity: 1;
   }
 }
 
-/* 実際の石の見た目とひっくり変える時の回転(transform)指定 */
 .disc {
   width: 100%;
   height: 100%;
@@ -258,7 +255,6 @@ h1 {
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4), inset 0 -4px 6px rgba(0, 0, 0, 0.2);
 }
 
-/* 石の色 (UIのscore-avatarのクラス名と共通のものを参照) */
 .disc.is-black {
   background: radial-gradient(circle at 30% 30%, #4b5563, var(--disc-black));
   border: 1px solid #1f2937;
@@ -270,20 +266,17 @@ h1 {
 }
 
 /* ==========================================
-     5. 魔法のカード UI周辺
+   5. Magic Card UI
    ========================================== */
 .magic-deck {
   display: flex;
   gap: 8px;
   justify-content: center;
-  /* 手札が横幅を超えたら改行する */
   flex-wrap: wrap;
 }
 
-/* 魔法カード本体のデザイン */
 .magic-card {
   background: var(--glass-bg);
-  /* 魔法チックな金色の縁取り */
   border: 1px solid rgba(251, 191, 36, 0.5);
   border-radius: 8px;
   padding: 0;
@@ -294,70 +287,83 @@ h1 {
   cursor: pointer;
   transition: all 0.2s;
   position: relative;
-  /* 金色の文字 */
   color: #fcd34d;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-/* カードにマウスを重ねた時に浮き上がる演出 */
 .magic-card:hover {
   background: rgba(251, 191, 36, 0.2);
   transform: translateY(-2px);
   z-index: 9999;
 }
 
-/* 使用済み、またはロックされたカード（グレーアウトされてクリックできなくなる） */
 .magic-card.used {
   opacity: 0.3;
   pointer-events: none;
   filter: grayscale(100%);
 }
 
-/* CPU側のカードの見た目は、最初は詳細が分からないように銀色の枠にする */
 #cpu-magic-deck .magic-card {
   border-color: rgba(255, 255, 255, 0.2);
-  /* クリックできないのでポインタを変えない */
   color: #e2e8f0;
   cursor: default;
 }
 
 #cpu-magic-deck .magic-card:hover {
-  /* 浮き上がらない */
   transform: none;
   background: var(--glass-bg);
 }
 
-/* 魔法カードの上にマウスを乗せた時に出る説明枠（ツールチップ）  */
+/* Magic card tooltip */
 .magic-tooltip {
   display: none;
   position: absolute;
   bottom: calc(100% + 10px);
   left: 50%;
-  /* 中央寄せ */
   transform: translateX(-50%);
-  background: #1e293b;
-  color: #fff;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: #f8fafc;
   padding: 10px 14px;
   border-radius: 8px;
   width: max-content;
-  max-width: 200px;
-  z-index: 9999;
-  font-size: 0.75rem;
+  max-width: 260px;
+  z-index: 99999;
+  font-size: 0.8rem;
+  line-height: 1.5;
   pointer-events: none;
-  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.3);
-  text-align: center;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  text-align: left;
   white-space: normal;
+  word-break: break-word;
 }
 
-/* ホバー時のみ表示 */
+/* Position tooltip downwards for opponent hand to avoid overflowing top of screen */
+#cpu-magic-deck .magic-tooltip {
+  bottom: auto;
+  top: calc(100% + 10px);
+}
+
+/* Prevent tooltip overflow on left and right edge cards */
+.magic-deck .magic-card:first-child .magic-tooltip {
+  left: 0;
+  transform: none;
+}
+
+.magic-deck .magic-card:last-child .magic-tooltip {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+/* Show tooltip on card hover */
 .magic-card:hover .magic-tooltip {
   display: block;
 }
 
 /* ==========================================
-     6. 各種モーダル、ダイアログ周り
+   6. Modals and Dialogs
    ========================================== */
-/* 対象を選択してね！と表示される画面上の指示バー */
 .targeting-bar {
   background: rgba(251, 191, 36, 0.1);
   border: 1px solid rgba(251, 191, 36, 0.4);
@@ -366,7 +372,6 @@ h1 {
   text-align: center;
   color: #fbbf24;
   font-weight: bold;
-  /* 枠線を点滅させて目立たせる */
   animation: pulse-border 1.5s infinite;
 }
 
@@ -376,7 +381,6 @@ h1 {
   }
 }
 
-/* ポップアップする小窓画面の後ろにある暗い背景 */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -415,7 +419,6 @@ h1 {
   from {
     opacity: 0;
   }
-
   to {
     opacity: 1;
   }
@@ -425,13 +428,11 @@ h1 {
   from {
     opacity: 1;
   }
-
   to {
     opacity: 0;
   }
 }
 
-/* ポップアップのメイン枠 */
 .modal-content {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -440,7 +441,6 @@ h1 {
   text-align: center;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
   transform: translateY(0);
-  /* 下からスッと昇ってくるアニメーション */
   animation: slideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   max-width: 480px;
   width: 100%;
@@ -457,14 +457,12 @@ h1 {
     transform: translateY(50px);
     opacity: 0;
   }
-
   to {
     transform: translateY(0);
     opacity: 1;
   }
 }
 
-/* モーダルのタイトル（例：ゲーム終了！など） */
 .modal-content h2 {
   font-size: 2.5rem;
   margin-bottom: 20px;
@@ -474,14 +472,12 @@ h1 {
   -webkit-text-fill-color: transparent;
 }
 
-/* ボタンを縦や横に並べるためのコンテナ */
 .button-group {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-/* 最終スコアテキスト */
 .final-score {
   font-size: 1.2rem;
   margin-bottom: 30px;
@@ -490,7 +486,6 @@ h1 {
   gap: 10px;
 }
 
-/* 主力ボタン（色選択や決定などに使う）*/
 .primary-btn {
   background: linear-gradient(135deg, #10b981, #059669);
   color: white;
@@ -513,7 +508,6 @@ h1 {
   transform: translateY(0);
 }
 
-/* サブボタン（キャンセル側などに使う、背景透けボタン） */
 .secondary-btn {
   background: transparent;
   border: 1px solid #10b981;
@@ -539,10 +533,82 @@ h1 {
 }
 
 /* ==========================================
-     7. 魔法の視覚「エフェクト（特殊表示）」指定群
+   7. Radio Button Group Styles
    ========================================== */
+.setting-section {
+  margin-bottom: 16px;
+}
 
-/* 勝敗ごとにテキストの色（グラデーション）を切り替える */
+.setting-title {
+  font-size: 0.95rem;
+  color: #94a3b8;
+  margin-bottom: 8px;
+  font-weight: bold;
+}
+
+.radio-button-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.radio-btn {
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.radio-btn input[type="radio"] {
+  display: none;
+}
+
+.radio-btn span {
+  padding: 8px 12px;
+  font-size: 0.95rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: #e2e8f0;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.radio-btn:hover span {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.radio-btn input[type="radio"]:checked + span {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border-color: #34d399;
+  color: #fff;
+  font-weight: bold;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+}
+
+.mode-group .mode-manosaba input[type="radio"]:checked + span {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border-color: #fbbf24;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+}
+
+.mode-group .mode-special input[type="radio"]:checked + span {
+  background: linear-gradient(135deg, #f43f5e, #e11d48);
+  border-color: #fb7185;
+  box-shadow: 0 2px 8px rgba(244, 63, 94, 0.4);
+}
+
+.manosaba-group input[type="radio"]:checked + span {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border-color: #fbbf24;
+}
+
+.special-group input[type="radio"]:checked + span {
+  background: linear-gradient(135deg, #f43f5e, #e11d48);
+  border-color: #fb7185;
+}
+
+/* ==========================================
+   8. Visual Effects Styles
+   ========================================== */
 #winner-text.win {
   background: linear-gradient(135deg, #34d399, #10b981);
   -webkit-background-clip: text;
@@ -561,7 +627,6 @@ h1 {
   background-clip: text;
 }
 
-/* 紫藤アリサ: マスをチカチカさせて赤く燃え上がっているように見せるアニメーション */
 .cell.on-fire {
   box-shadow: inset 0 0 16px 2px #ef4444;
   animation: pulse-fire 1s infinite alternate ease-in-out;
@@ -571,15 +636,13 @@ h1 {
   from {
     background-color: rgba(239, 68, 68, 0.3);
   }
-
   to {
     background-color: rgba(239, 68, 68, 0.8);
   }
 }
 
-/* 氷上メルル: 禁止マスを分かりやすくする「✖（赤バツ）」の表示 */
 .cell.banned-move::before {
-  content: '✖';
+  content: '\2716';
   position: absolute;
   color: #ef4444;
   font-size: 3rem;
@@ -589,7 +652,6 @@ h1 {
   pointer-events: none;
 }
 
-/* 夏目アンアン: 相手の有効手を強制表示するための小さな赤いドットエフェクト */
 .cell.opponent-valid-move::after {
   content: '';
   position: absolute;
@@ -606,14 +668,12 @@ h1 {
     transform: scale(1);
     opacity: 0.8;
   }
-
   to {
     transform: scale(1.3);
     opacity: 1;
   }
 }
 
-/* 遠野ハンナ: 動いた直後の石、または選んだ石をオレンジに光らせるエフェクト */
 .moved-stone-effect {
   box-shadow: 0 0 15px 5px rgba(249, 115, 22, 0.8) !important;
   animation: pulse-orange 2s infinite;
@@ -623,17 +683,14 @@ h1 {
   0% {
     box-shadow: 0 0 15px 5px rgba(249, 115, 22, 0.6);
   }
-
   50% {
     box-shadow: 0 0 25px 8px rgba(249, 115, 22, 1);
   }
-
   100% {
     box-shadow: 0 0 15px 5px rgba(249, 115, 22, 0.6);
   }
 }
 
-/* 遠野ハンナ: 動く前の「元いたマス」に点線のオレンジ枠だけを残すトレースエフェクト */
 .cell.moved-from-effect::before {
   content: '';
   position: absolute;
@@ -649,17 +706,14 @@ h1 {
   0% {
     opacity: 0.4;
   }
-
   50% {
     opacity: 1;
   }
-
   100% {
     opacity: 0.4;
   }
 }
 
-/* 飛ぶカードのアニメーション用 */
 .flying-card {
   position: fixed;
   z-index: 9999;
@@ -681,7 +735,6 @@ h1 {
   border-radius: 8px;
 }
 
-/* 城ケ崎ノア: 色を変えられた石を紫に光らせるエフェクト */
 .changed-stone-effect {
   box-shadow: 0 0 15px 5px rgba(217, 70, 239, 0.8) !important;
   animation: pulse-purple 2s infinite;
@@ -691,17 +744,14 @@ h1 {
   0% {
     box-shadow: 0 0 15px 5px rgba(217, 70, 239, 0.6);
   }
-
   50% {
     box-shadow: 0 0 25px 8px rgba(217, 70, 239, 1);
   }
-
   100% {
     box-shadow: 0 0 15px 5px rgba(217, 70, 239, 0.6);
   }
 }
 
-/* 佐伯ミリア: 入れ替えで使った石を黄色く光らせるエフェクト */
 .swapped-stone-effect {
   box-shadow: 0 0 15px 5px rgba(250, 204, 21, 0.8) !important;
   animation: pulse-yellow 2s infinite;
@@ -711,11 +761,9 @@ h1 {
   0% {
     box-shadow: 0 0 15px 5px rgba(250, 204, 21, 0.6);
   }
-
   50% {
     box-shadow: 0 0 25px 8px rgba(250, 204, 21, 1);
   }
-
   100% {
     box-shadow: 0 0 15px 5px rgba(250, 204, 21, 0.6);
   }
@@ -734,15 +782,14 @@ h1 {
   from {
     transform: rotateY(-90deg);
   }
-
   to {
     transform: rotateY(0deg);
   }
 }
 
-
-
-/* スマホ向けレイアウト調整 */
+/* ==========================================
+   9. Responsive Design
+   ========================================== */
 @media (max-width: 600px) {
   .modal-overlay {
     padding: 16px 10px;
@@ -803,120 +850,8 @@ h1 {
   }
 }
 
-/* スマホ(タッチ端末)でのツールチップ非表示 */
 @media (hover: none) {
   .magic-card:hover .magic-tooltip {
     display: none !important;
-  }
-}
-
-/* --- ラジオボタンのボタン風デザイン --- */
-.setting-section {
-  margin-bottom: 16px;
-}
-
-.setting-title {
-  font-size: 0.95rem;
-  color: #94a3b8;
-  margin-bottom: 8px;
-  font-weight: bold;
-}
-
-.radio-button-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.radio-btn {
-  display: inline-flex;
-  cursor: pointer;
-}
-
-.radio-btn input[type="radio"] {
-  display: none;
-}
-
-.radio-btn span {
-  padding: 8px 12px;
-  font-size: 0.95rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  color: #e2e8f0;
-  transition: all 0.2s ease;
-  user-select: none;
-}
-
-.radio-btn:hover span {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-.radio-btn input[type="radio"]:checked+span {
-  background: linear-gradient(135deg, #10b981, #059669);
-  border-color: #34d399;
-  color: #fff;
-  font-weight: bold;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
-}
-
-/* モード専用の色分け */
-.mode-group .mode-manosaba input[type="radio"]:checked+span {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  border-color: #fbbf24;
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
-}
-
-.mode-group .mode-special input[type="radio"]:checked+span {
-  background: linear-gradient(135deg, #f43f5e, #e11d48);
-  border-color: #fb7185;
-  box-shadow: 0 2px 8px rgba(244, 63, 94, 0.4);
-}
-
-.manosaba-group input[type="radio"]:checked+span {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  border-color: #fbbf24;
-}
-
-.special-group input[type="radio"]:checked+span {
-  background: linear-gradient(135deg, #f43f5e, #e11d48);
-  border-color: #fb7185;
-}
-
-/* タイトル画面のモーダル高さ固定（ガタつき防止） */
-.title-modal .mode-selector {
-  min-height: 400px;
-}
-
-/* タイマー処理 */
-.online-timer {
-  font-size: 0.95rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.05em;
-  color: #94a3b8;
-  margin-top: 2px;
-  transition: color 0.3s ease;
-}
-
-.online-timer.active-timer {
-  color: #fbbf24;
-  text-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
-}
-
-.online-timer.danger-timer {
-  color: #ef4444;
-  animation: pulse-timer-danger 1s infinite alternate;
-}
-
-@keyframes pulse-timer-danger {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-
-  to {
-    opacity: 0.65;
-    transform: scale(1.04);
   }
 }

@@ -24,7 +24,7 @@ const DIRECTIONS = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0]
 const ALL_MAGICS = [
   { id: 1, name: "桜羽エマ（魔女殺し）", desc: "相手の魔法をカードごと物理的に1枚打ち消す（実質的に手札を4枚にする）。", requiresTarget: false },
   { id: 2, name: "二階堂ヒロ（死に戻り）", desc: "自分と相手の魔法をそれぞれの状態で引き直す。", requiresTarget: false },
-  { id: 3, name: "夏目アンアン（洗脳）", desc: "次の相手のターンに石を置くマスを指定し、そこにしか置けなくする。", requiresTarget: 'valid_opponent' },
+  { id: 3, name: "夏目アンアン（洗脳）", desc: "次の相手のターンに石を置くマスを指定し、そこにしか置けなくする（※相手に置けるマスがない場合は使用不可）。", requiresTarget: 'valid_opponent' },
   { id: 4, name: "城ケ崎ノア（液体操作）", desc: "盤面上の任意の石1つを、指定した色（黒/白）に直接書き換える。", requiresTarget: 'stone' },
   { id: 5, name: "蓮見レイア（視線誘導）", desc: "相手の手札の魔法1つをランダムで使用済み（使用不可）にする。", requiresTarget: false },
   { id: 6, name: "佐伯ミリア（入れ替わり）", desc: "盤面上の自分の石1つと、相手の石1つの場所を入れ替える。", requiresTarget: 'miria_1' },
@@ -144,10 +144,10 @@ function getCpuName() {
     return names[specialOpponent] || "CPU";
   }
   if (isManosabaMode) {
-    const names = { 4: "黒部ナノカ", 5: "沢渡ココ", 7: "氷上メルル" };
+    const names = { 4: "氷上メルル", 5: "黒部ナノカ", 7: "桜羽エマ" };
     return names[cpuDifficulty] || "CPU";
   } else {
-    const names = { 1: "桜羽エマ", 3: "蓮見レイア", 7: "二階堂ヒロ", /* 15: "ゴクチョー", */ 16: "二階堂ヒロ(裏)" };
+    const names = { 1: "沢渡ココ", 3: "蓮見レイア", 7: "二階堂ヒロ", /* 15: "ゴクチョー", */ 16: "二階堂ヒロ(裏)" };
     return names[cpuDifficulty] || "CPU";
   }
 }
@@ -346,6 +346,9 @@ function handleTimeOut(isMe) {
     }
   }
   gameOverModal.style.display = 'flex';
+  if (window.isOnlineMode && window.netFinishGame) {
+    window.netFinishGame();
+  }
 }
 
 window.handleRemoteTimeout = function() {
@@ -446,6 +449,7 @@ function initGame(selectedPlayerColor) {
 
   const opRadios = document.getElementsByName('opponent-type');
   if (opRadios.length) { for (const radio of opRadios) { if (radio.checked) opponentType = radio.value; } }
+  if (window.isOnlineMode) { opponentType = 'pvp'; }
 
   if (isSpecialMode) {
     const specialRadios = document.getElementsByName('special-opponent');
@@ -683,6 +687,13 @@ function renderMagics(animateFlipTarget = false) {
 
       // 魔法が使えないタイミング（相手ターン中、CPU思考中、ターゲッティング強制中など）は反応をブロック
       if (isCPUThinking || currentTurn !== playerColor || targetingState) return;
+      if (window.isOnlineMode && (currentTurn !== window.myOnlineColor || currentTurn !== playerColor)) return;
+
+      const unusableReason = getMagicUnusableReason(m.spell, false);
+      if (unusableReason) {
+        showModalAlert(unusableReason);
+        return;
+      }
 
       promptMagic(i); // ダイアログ表示へ
     });
@@ -728,6 +739,12 @@ function renderMagics(animateFlipTarget = false) {
         }
 
         if (isCPUThinking || currentTurn !== cpuColor || targetingState) return;
+
+        const unusableReason = getMagicUnusableReason(m.spell, true);
+        if (unusableReason) {
+          showModalAlert(unusableReason);
+          return;
+        }
 
         promptMagic(i, true);
       });
@@ -905,6 +922,55 @@ function returnMagicsToDeckAnimation(onComplete) {
 /**
  * 魔法を使用するかどうかの確認ダイアログを開きます。
  */
+function getMagicUnusableReason(spell, isCpuDeck = false) {
+  const myColor = isCpuDeck ? cpuColor : playerColor;
+  const opColor = isCpuDeck ? playerColor : cpuColor;
+
+  if (spell.id === 3 || spell.requiresTarget === 'valid_opponent') {
+    const opMoves = getValidMoves(opColor);
+    if (opMoves.length === 0) {
+      return "現在、相手に置けるマスがないため、夏目アンアンの魔法は使用できません。";
+    }
+  }
+
+  if (spell.id === 6 || spell.requiresTarget === 'miria_1') {
+    const myStone = getRandomStone(myColor);
+    const opStone = getRandomStone(opColor);
+    if (!myStone || !opStone) {
+      return "盤面上に入れ替える石が存在しないため、佐伯ミリアの魔法は使用できません。";
+    }
+  }
+
+  if (spell.requiresTarget === 'stone' || spell.requiresTarget === 'cell' || spell.requiresTarget === 'hanna_1') {
+    const anyStone = getRandomStone(BLACK) || getRandomStone(WHITE);
+    if (!anyStone) {
+      return "盤面に石が存在しないため、この魔法は使用できません。";
+    }
+  }
+
+  return null;
+}
+
+function cancelTargeting() {
+  targetingState = null;
+  activeMagicIndex = null;
+  targetingCache = null;
+  if (targetBar) targetBar.style.display = 'none';
+
+  document.querySelectorAll('.opponent-valid-move').forEach(el => el.classList.remove('opponent-valid-move'));
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (specialStones[r] && (specialStones[r][c] === 'selected' || specialStones[r][c] === 'swapped')) {
+        specialStones[r][c] = null;
+      }
+    }
+  }
+  updateBoardDOM();
+  updateGameState();
+}
+
+document.getElementById('btn-cancel-targeting')?.addEventListener('click', cancelTargeting);
+
 function promptMagic(index, isCpuDeck = false) {
   const magic = isCpuDeck ? cpuMagics[index] : playerMagics[index];
   activeMagicIndex = index; // 選択された魔法が何番目なのかを一時記憶
@@ -933,6 +999,15 @@ btnConfirmMagic.addEventListener('click', () => {
   const isCpuMode = activeMagicIsCpuDeck;
   const magic = isCpuMode ? cpuMagics[index] : playerMagics[index];
 
+  if (!magic) return;
+
+  const unusableReason = getMagicUnusableReason(magic.spell, isCpuMode);
+  if (unusableReason) {
+    showModalAlert(unusableReason);
+    activeMagicIndex = null;
+    return;
+  }
+
   if (magic.spell.requiresTarget) {
     // もしその魔法が「対象を指定する必要がある魔法」なら、ターゲッティングモードに移行する
     targetingState = magic.spell.requiresTarget;
@@ -956,12 +1031,10 @@ btnConfirmMagic.addEventListener('click', () => {
 
 // 魔法ごとに要求される指示テキストを返す関数
 function getTargetingPromptText(state) {
-  if (state === 'valid_opponent') return "相手が置けるマスを1つ指定してください。";
-  if (state === 'stone') return "色を変更する石をクリックしてください。";
-  if (state === 'miria_1') return "入れ替える【自分の石】をクリックしてください。";
-  if (state === 'cell') return "発火させる【盤面上の石】を1つクリックしてください。";
-  if (state === 'hanna_1') return "移動する【盤面上の石】をクリックしてください。";
-  return "対象を選択してください。";
+  if (state === 'valid_opponent') return "\u76F8\u624B\u304C\u7F6E\u3051\u308B\u30DE\u30B9\u30921\u3064\u6307\u5B9A\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
+  if (state === 'miria_1') return "\u5165\u308C\u66FF\u3048\u308B\u3010\u81EA\u5206\u306E\u77F3\u3011\u3092\u30AF\u30EA\u30C3\u30AF\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
+  if (state === 'hanna_1') return "\u79FB\u52D5\u3059\u308B\u3010\u76E4\u9762\u4E0A\u306E\u77F3\u3011\u3092\u30AF\u30EA\u30C3\u30AF\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
+  return "";
 }
 
 // ==========================================
@@ -976,76 +1049,80 @@ function getTargetingPromptText(state) {
  */
 function commitMagic(index, casterIsCpu, logicCallback, isMargo = false) {
   const magic = casterIsCpu ? cpuMagics[index] : playerMagics[index];
-  // ネット対戦時の同期用に使用した魔法情報を記録
+  const isMargoCopyAction = isMargo || (magic && magic.spell && magic.spell.id === 7 && !magic.spell.name.startsWith('\u5B9D\u751F\u30DE\u30FC\u30B4\u2192'));
+
   if (!casterIsCpu) {
     window.lastUsedSpellId = magic.spell.id;
     window.lastUsedSpellName = magic.spell.name;
     window.lastUsedMagicIndex = index;
   }
 
-  // 魔法実行時の効果音再生
   playMagicSound(magic.spell.id);
 
-  // もしそのカードが「すでにマーゴでコピー済み」だった場合、ゲームシステム全体としては
-  // 元の魔法ではなく「マーゴ（ID: 7）」を消費した扱いとする。
-  // （※マーゴのコピー魔法使用で消費されるのはマーゴですが、コピー効果を行使したプレイヤー自身は
-  // その魔法を「使用した」という事実が残るため、自分の山札からは以降ドローされなくなります。
-  // もちろんコピー元の相手の魔法の消費状態には一切影響を与えません）
-  const trueId = magic.spell.name.startsWith('宝生マーゴ→') ? 7 : magic.spell.id;
+  const trueId = magic.spell.name.startsWith('\u5B9D\u751F\u30DE\u30FC\u30B4\u2192') ? 7 : magic.spell.id;
 
-  if (casterIsCpu) {
-    magic.used = true;
-    cpuUsedMagicIds.add(trueId);
-  } else {
-    magic.used = true;
-    playerUsedMagicIds.add(trueId);
+  if (!isMargoCopyAction) {
+    if (casterIsCpu) {
+      magic.used = true;
+      cpuUsedMagicIds.add(trueId);
+    } else {
+      magic.used = true;
+      playerUsedMagicIds.add(trueId);
+    }
   }
 
-  // いつでも安全に不要な情報を消すために、アンアンのハイライトをここで取り除く
   document.querySelectorAll('.opponent-valid-move').forEach(el => el.classList.remove('opponent-valid-move'));
 
   let isAsync = false;
   if (logicCallback) {
-    isAsync = logicCallback() === 'async'; // 実際の効果(switch/case側から渡されたもの)を発動
+    isAsync = logicCallback() === 'async';
   }
 
-  if (isAsync) return; // 非同期処理を含む場合はコールバック側で後続処理を行うためここで終了
-  if (isMargo) {
-    if (window.isOnlineMode && window.netSendAction) {
-    window.netSendAction({
-      type: 'magic',
-      spellId: window.lastUsedSpellId || 0,
-      spellName: window.lastUsedSpellName || "魔法",
-      boardJson: JSON.stringify(board),
-      fireStatesJson: JSON.stringify(fireStates),
-      specialStonesJson: JSON.stringify(specialStones),
-      usedIndex: window.lastUsedMagicIndex,
-      forcedOpponentMove: forcedOpponentMove,
-      bannedOpponentMove: bannedOpponentMove,
-      myMagicBlocked: playerMagicBlocked,
-      opMagicBlocked: cpuMagicBlocked,
-      casterPlayerMagicsJson: JSON.stringify(playerMagics),
-      casterCpuMagicsJson: JSON.stringify(cpuMagics),
-      casterPlayerUsedIds: Array.from(playerUsedMagicIds),
-      casterCpuUsedIds: Array.from(cpuUsedMagicIds),
-      timeLeft: playerTimeLeft
-    });
+  if (isAsync) return;
+
+  if (isMargoCopyAction) {
+    if (casterIsCpu) {
+      cpuMagics[index].used = false;
+      cpuUsedMagicIds.delete(7);
+    } else {
+      playerMagics[index].used = false;
+      playerUsedMagicIds.delete(7);
     }
-    // マーゴを初めて手札から使用して他人の魔法をコピーした瞬間は、
-    // まだマーゴ自体を「消費した」ことにはせず、手札を上書きして一旦戻す。(次にその魔法を使うときに消費判定になる)
-    if (casterIsCpu) { cpuMagics[index].used = false; cpuUsedMagicIds.delete(7); }
-    else { playerMagics[index].used = false; playerUsedMagicIds.delete(7); }
+
+    if (window.isOnlineMode && window.netSendAction) {
+      window.netSendAction({
+        type: 'magic_margo_copy',
+        spellId: window.lastUsedSpellId || 7,
+        spellName: window.lastUsedSpellName || "\u5B9D\u751F\u30DE\u30FC\u30B4(\u307E\u306D\u307E\u306D)",
+        boardJson: JSON.stringify(board),
+        fireStatesJson: JSON.stringify(fireStates),
+        specialStonesJson: JSON.stringify(specialStones),
+        usedIndex: index,
+        forcedOpponentMove: forcedOpponentMove,
+        bannedOpponentMove: bannedOpponentMove,
+        myMagicBlocked: playerMagicBlocked,
+        opMagicBlocked: cpuMagicBlocked,
+        casterPlayerMagicsJson: JSON.stringify(playerMagics),
+        casterCpuMagicsJson: JSON.stringify(cpuMagics),
+        casterPlayerUsedIds: Array.from(playerUsedMagicIds),
+        casterCpuUsedIds: Array.from(cpuUsedMagicIds),
+        timeLeft: playerTimeLeft
+      });
+    }
 
     renderMagics();
 
-    // マーゴでコピーが終わったら、ターゲットの強制を解除してターンを『進めずに』保持する
     if (!casterIsCpu || opponentType === 'pvp') {
-      activeMagicIndex = null; targetBar.style.display = 'none'; targetingState = null;
-      updateGameState();
+      activeMagicIndex = null;
+      targetBar.style.display = 'none';
+      targetingState = null;
+      currentTurn = playerColor;
+      updateBoardDOM();
+      updateTurnUI();
+    } else {
+      makeCPUMovePlacement();
     }
-    else { makeCPUMovePlacement(); } // CPUの場合はそのままシームレスに次の石置きアクションへ行く
   } else {
-    // マーゴ以外（またはコピー済みのマーゴ）を実際に発動した後は、ターンを強制終了して相手に移す
     renderMagics();
     endMagicTurn();
   }
@@ -1101,6 +1178,7 @@ function endMagicTurn() {
  * 非ターゲッティング魔法(RequiresTarget=false)の実際の効果を内包したコントローラーです（プレイヤー用）。
  */
 function executeMagicLogic(magicId, casterIsCpu, index) {
+  const isMargoCopyAction = (magicId === 7);
   commitMagic(index, casterIsCpu, () => {
     switch (magicId) {
       case 1: { // 桜羽エマ: 相手の魔法をカードごと物理的に1枚打ち消す（実質的に手札を4枚にする）。
@@ -1428,7 +1506,7 @@ function handleCellClick(r, c) {
   if (isCPUThinking || (opponentType === 'cpu' && currentTurn !== playerColor)) return;
 
   // ネット対戦時、自分のターンでなければクリックをブロック
-  if (window.isOnlineMode && currentTurn !== window.myOnlineColor) return;
+  if (window.isOnlineMode && (currentTurn !== window.myOnlineColor || currentTurn !== playerColor)) return;
 
   // 今クリックしようとしているマスが、通常でちゃんと「置けるマス(validMoves)」かどうか調べる
   const move = validMoves.find(m => m.r === r && m.c === c);
@@ -1613,7 +1691,7 @@ function updateGameState() {
   }
 
   // プレイヤーのターン、または2人プレイモードなら「ここに置けるよ」というヒントマーカーを付ける
-  if (currentTurn === playerColor || opponentType === 'pvp') {
+  if (currentTurn === playerColor || (opponentType === 'pvp' && !window.isOnlineMode)) {
     if (forcedOpponentMove) {
       // もしアンアンに強制指定されているなら、そこ以外光らせない
       const idx = forcedOpponentMove.r * COLS + forcedOpponentMove.c;
@@ -2236,6 +2314,9 @@ function surrenderGame() {
     }
   }
   gameOverModal.style.display = 'flex';
+  if (window.isOnlineMode && window.netFinishGame) {
+    window.netFinishGame();
+  }
 }
 
 // 相手が投了した時のハンドラ
@@ -2383,12 +2464,54 @@ window.handleRemoteMagic = function(data) {
 
 // 相手がマーゴでカードをコピーした時の同期ハンドラ
 window.handleRemoteMargoCopy = function(data) {
+  if (gameEnded) return;
+  playMagicSound(data.spellId || 7);
+
   if (data.casterPlayerMagicsJson) {
     cpuMagics = JSON.parse(data.casterPlayerMagicsJson);
-    renderMagics();
   } else if (data.casterPlayerMagics) {
     cpuMagics = JSON.parse(JSON.stringify(data.casterPlayerMagics));
-    renderMagics();
+  }
+
+  if (data.casterPlayerUsedIds) {
+    cpuUsedMagicIds = new Set(data.casterPlayerUsedIds);
+  }
+
+  if (data.usedIndex !== undefined && cpuMagics[data.usedIndex]) {
+    cpuMagics[data.usedIndex].used = false;
+  }
+  cpuUsedMagicIds.delete(7);
+
+  if (typeof data.timeLeft === 
+'number') {
+    cpuTimeLeft = data.timeLeft;
+    updateTimerDisplay();
+  }
+
+  renderMagics();
+  if (cpuMagicRevealed) {
+    renderMagics('cpu');
+  }
+
+  const opponentColor = window.myOnlineColor === 1 ? 2 : 1;
+  currentTurn = opponentColor;
+  updateTurnUI();
+  updateBoardDOM();
+
+  const modal = document.getElementById('cpu-magic-modal');
+  const msgEl = document.getElementById('cpu-magic-message');
+  const btnClose = document.getElementById('btn-close-cpu-magic');
+
+  if (modal && msgEl && btnClose) {
+    const opName = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "\u76F8\u624B";
+    msgEl.textContent = `${opName} \u306F\u9B54\u6CD5\u300C${data.spellName || "\u5B9D\u751F\u30DE\u30FC\u30B4\uFF08\u30E2\u30CE\u30DE\u30CD\uFF09"}\u300D\u3092\u4F7F\u7528\u3057\u307E\u3057\u305F\uFF01`;
+    modal.style.display = 'flex';
+
+    const closeHandler = () => {
+      modal.style.display = 'none';
+      btnClose.removeEventListener('click', closeHandler);
+    };
+    btnClose.addEventListener('click', closeHandler);
   }
 };
 
@@ -2422,6 +2545,9 @@ window.handleRemoteSurrender = function() {
     }
   }
   gameOverModal.style.display = 'flex';
+  if (window.isOnlineMode && window.netFinishGame) {
+    window.netFinishGame();
+  }
 };
 
 function endGame() {
@@ -2476,6 +2602,9 @@ function endGame() {
     }
   }
   gameOverModal.style.display = 'flex';
+  if (window.isOnlineMode && window.netFinishGame) {
+    window.netFinishGame();
+  }
 }
 
 // 各種ボタン類のイベント登録
@@ -2595,6 +2724,8 @@ if (btnStartMatching) {
 }
 surrenderBtn.addEventListener('click', () => { if (!gameEnded) confirmSurrenderModal.style.display = 'flex'; });
 restartBtn.addEventListener('click', () => {
+  if (window.netFinishGame) window.netFinishGame();
+  if (window.netCleanup) window.netCleanup(true);
   gameOverModal.style.display = 'none';
   titleScreenModal.style.display = 'flex';
 
@@ -2760,3 +2891,11 @@ document.querySelectorAll('input[name="opponent-type"]').forEach(radio => {
     }
   });
 });
+
+
+// Ensure play buttons are not disabled on load
+if (typeof btnPlayBlack !== 'undefined' && btnPlayBlack) btnPlayBlack.disabled = false;
+if (typeof btnPlayWhite !== 'undefined' && btnPlayWhite) btnPlayWhite.disabled = false;
+
+// Global export of initGame
+window.initGame = initGame;

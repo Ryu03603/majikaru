@@ -27,6 +27,44 @@ let currentMatchConfig = null;
 let myHasReady = false;
 let opponentHasReady = false;
 let readyListenerRef = null;
+let statusListenerRef = null;
+
+// リスナーおよびタイマーの完全クリーンアップ関数
+function cleanupOnlineSession(clearRoomId = true) {
+  if (matchCountdownTimer) {
+    clearInterval(matchCountdownTimer);
+    matchCountdownTimer = null;
+  }
+  if (onlineTurnListener && currentRoomId && database) {
+    try {
+      getRoomRef(currentRoomId, currentRoomType).child('moves').off();
+    } catch (e) { console.warn(e); }
+    onlineTurnListener = null;
+  }
+  if (statusListenerRef) {
+    try {
+      statusListenerRef.off();
+    } catch (e) { console.warn(e); }
+    statusListenerRef = null;
+  }
+  if (readyListenerRef) {
+    try {
+      readyListenerRef.off();
+    } catch (e) { console.warn(e); }
+    readyListenerRef = null;
+  }
+
+  hasStartedMatch = false;
+  myHasReady = false;
+  opponentHasReady = false;
+  currentMatchConfig = null;
+
+  if (clearRoomId) {
+    currentRoomId = null;
+    isHost = false;
+  }
+}
+window.netCleanup = cleanupOnlineSession;
 
 window.localPlayerName = "あなた";
 window.remotePlayerName = "相手";
@@ -177,86 +215,137 @@ window.netMatchmake = function(password, playerName) {
   // 2. 合言葉あり：フレンド対戦
   currentRoomType = 'rooms';
   const roomId = trimmedPassword;
+  cleanupOnlineSession(true);
 
-  database.ref('rooms/' + roomId).once('value').then((snapshot) => {
-    if (!window.isMatchingWaiting) return;
+  currentRoomId = roomId;
+  window.isMatchingWaiting = true;
+  window.updateMatchingButtonUI(true);
 
-    const data = snapshot.val();
+  const roomRef = database.ref('rooms/' + roomId);
 
-    if (!snapshot.exists() || !data || data.status === 'cancelled' || data.status === 'finished') {
-      createAsHost(roomId, playerName, modeVal, modeName, 'rooms', "合言葉「" + roomId + "」で対戦相手を待機しています...");
-    } else if (data.status === 'waiting') {
-      joinAsGuest(roomId, data, playerName, modeVal, hostModeName => hostModeName || modeName, 'rooms');
+  // Use transaction with numeric timestamp (ServerValue.TIMESTAMP is illegal inside transaction)
+  roomRef.transaction((currentData) => {
+    const now = Date.now();
+    const isOldRoom = currentData && currentData.timestamp && (now - currentData.timestamp > 20 * 60 * 1000);
+    const isFinished = currentData && (currentData.status === 'finished' || currentData.status === 'cancelled');
+    const canCreateHost = !currentData || isFinished || isOldRoom;
+
+    if (canCreateHost) {
+      const hostColor = Math.random() < 0.5 ? 1 : 2;
+      return {
+        status: 'waiting',
+        hostName: playerName,
+        hostColor: hostColor,
+        gameMode: modeVal,
+        gameModeName: modeName,
+        timestamp: now,
+        hostReady: false,
+        guestReady: false,
+        moves: null
+      };
+    } else if (currentData.status === 'waiting') {
+      const guestColor = currentData.hostColor === 1 ? 2 : 1;
+      return {
+        ...currentData,
+        status: 'matched',
+        guestName: playerName,
+        guestColor: guestColor,
+        guestReady: false
+      };
     } else {
-      if (statusMsg) statusMsg.textContent = "この合言葉の部屋はすでに対戦中か満室です。";
-      window.updateMatchingButtonUI(false);
+      return; // abort
     }
-  }).catch(err => {
-    console.error(err);
-    if (statusMsg) statusMsg.textContent = "通信エラーが発生しました: " + (err.message || "");
-    window.updateMatchingButtonUI(false);
-  });
-};
-
-// ホストとして部屋を作成（先手・後手はランダム決定）
-function createAsHost(roomId, playerName, modeVal, modeName, roomType, waitingMsg) {
-  const statusMsg = document.getElementById('online-status-msg');
-  const hostColor = Math.random() < 0.5 ? 1 : 2;
-  window.myOnlineColor = hostColor;
-
-  getRoomRef(roomId, roomType).set({
-    status: 'waiting',
-    hostName: playerName,
-    hostColor: hostColor,
-    gameMode: modeVal,
-    gameModeName: modeName,
-    timestamp: firebase.database.ServerValue.TIMESTAMP
-  }).then(() => {
-    if (!window.isMatchingWaiting) {
-      if (roomType === 'random_rooms') {
-        getRoomRef(roomId, roomType).remove();
-      } else {
-        getRoomRef(roomId, roomType).update({ status: 'cancelled' });
-      }
+  }, (error, committed, snapshot) => {
+    if (error) {
+      console.error("Matchmake transaction error:", error);
+      if (statusMsg) statusMsg.textContent = "\u901A\u4FE1\u30A8\u30E9\u30FC\u304C\u767A\u751F\u3057\u307E\u3057\u305F: " + (error.message || "");
+      cleanupOnlineSession(true);
+      window.updateMatchingButtonUI(false);
       return;
     }
 
-    currentRoomId = roomId;
-    currentRoomType = roomType;
-    isHost = true;
-    window.isOnlineMode = true;
-    setOnlineSeed(roomId);
+    if (!committed || !snapshot || !snapshot.exists()) {
+      if (statusMsg) statusMsg.textContent = "\u3053\u306E\u5408\u8A00\u8449\u306E\u90E8\u5C4B\u306F\u3059\u3067\u306B\u5BFE\u6226\u4E2D\u304B\u6E80\u5BA4\u3067\u3059\u3002";
+      cleanupOnlineSession(true);
+      window.updateMatchingButtonUI(false);
+      return;
+    }
 
-    if (statusMsg) statusMsg.textContent = waitingMsg;
-    window.updateMatchingButtonUI(true);
+    if (!window.isMatchingWaiting) {
+      cleanupOnlineSession(true);
+      return;
+    }
 
-    getRoomRef(roomId, roomType).child('status').on('value', (snap) => {
-      const st = snap.val();
-      if (st === 'matched') {
-        getRoomRef(roomId, roomType).once('value').then(rSnap => {
-          const rData = rSnap.val();
-          if (!rData) return;
-          window.remotePlayerName = rData.guestName || "相手";
-          const myCol = rData.hostColor;
-          const opCol = myCol === 1 ? 2 : 1;
-          showMatchConfirmModal({
-            gameMode: rData.gameMode || modeVal,
-            gameModeName: rData.gameModeName || modeName,
-            myColor: myCol,
-            opponentColor: opCol,
-            opponentName: window.remotePlayerName
-          });
-        });
-      } else if (st === 'cancelled') {
-        cancelMatch("対戦相手がマッチングをキャンセルしました。");
-      } else if (st === 'started') {
-        onMatchStarted(hostColor, modeVal);
-      }
-    });
+    const roomData = snapshot.val();
+    if (roomData.guestName === playerName && roomData.status === 'matched') {
+      joinAsGuest(roomId, roomData, playerName, modeVal, hostModeName => hostModeName || modeName, 'rooms');
+    } else {
+      createAsHost(roomId, playerName, modeVal, modeName, 'rooms', "\u5408\u8A00\u8449\u300C" + roomId + "\u300D\u3067\u5BFE\u6226\u76F8\u624B\u3092\u5F85\u6A5F\u3057\u3066\u3044\u307E\u3059...", roomData.hostColor || 1);
+    }
   });
+};
+
+function createAsHost(roomId, playerName, modeVal, modeName, roomType, waitingMsg, explicitHostColor = null) {
+  const statusMsg = document.getElementById('online-status-msg');
+  const hostColor = explicitHostColor !== null ? explicitHostColor : (Math.random() < 0.5 ? 1 : 2);
+  window.myOnlineColor = hostColor;
+
+  currentRoomId = roomId;
+  currentRoomType = roomType;
+  isHost = true;
+  window.isOnlineMode = true;
+  setOnlineSeed(roomId);
+
+  if (statusMsg) statusMsg.textContent = waitingMsg;
+  window.updateMatchingButtonUI(true);
+
+  if (statusListenerRef) {
+    statusListenerRef.off();
+    statusListenerRef = null;
+  }
+  if (roomType === 'rooms') {
+    getRoomRef(roomId, roomType).child('moves').remove().catch(e => console.warn(e));
+  }
+  statusListenerRef = getRoomRef(roomId, roomType).child('status');
+  statusListenerRef.on('value', (snap) => {
+    const st = snap.val();
+    if (st === 'matched') {
+      getRoomRef(roomId, roomType).once('value').then(rSnap => {
+        const rData = rSnap.val();
+        if (!rData) return;
+        window.remotePlayerName = rData.guestName || "\u76F8\u624B";
+        const myCol = rData.hostColor || hostColor;
+        const opCol = myCol === 1 ? 2 : 1;
+        showMatchConfirmModal({
+          gameMode: rData.gameMode || modeVal,
+          gameModeName: rData.gameModeName || modeName,
+          myColor: myCol,
+          opponentColor: opCol,
+          opponentName: window.remotePlayerName
+        });
+      });
+    } else if (st === 'cancelled') {
+      cancelMatch("\u5BFE\u6226\u76F8\u624B\u304C\u30DE\u30C3\u30C1\u30F3\u30B0\u3092\u30AD\u30E3\u30F3\u305B\u30EB\u3057\u307E\u3057\u305F\u3002");
+    } else if (st === 'started') {
+      onMatchStarted(hostColor, modeVal);
+    }
+  });
+
+  if (roomType === 'random_rooms') {
+    getRoomRef(roomId, roomType).set({
+      status: 'waiting',
+      hostName: playerName,
+      hostColor: hostColor,
+      gameMode: modeVal,
+      gameModeName: modeName,
+      timestamp: firebase.database.ServerValue.TIMESTAMP
+    }).catch(err => {
+      console.error(err);
+      cancelMatch("\u90E8\u5C4B\u306E\u4F5C\u6210\u306B\u5931\u6557\u3057\u307E\u3057\u305F\u3002");
+    });
+  }
 }
 
-// ゲストとして部屋に参加
 function joinAsGuest(roomId, data, playerName, modeVal, getModeName, roomType) {
   const statusMsg = document.getElementById('online-status-msg');
   const hostColor = data.hostColor || 1;
@@ -268,38 +357,47 @@ function joinAsGuest(roomId, data, playerName, modeVal, getModeName, roomType) {
   isHost = false;
   window.isOnlineMode = true;
   setOnlineSeed(roomId);
-  window.remotePlayerName = data.hostName || "相手";
+  window.remotePlayerName = data.hostName || "\u76F8\u624B";
 
   const hostGameMode = data.gameMode || modeVal;
   const hostGameModeName = getModeName(data.gameModeName);
 
-  getRoomRef(roomId, roomType).update({
-    status: 'matched',
-    guestName: playerName,
-    guestColor: guestColor
-  }).then(() => {
-    if (statusMsg) statusMsg.textContent = "対戦相手が見つかりました！";
+  if (statusMsg) statusMsg.textContent = "\u5BFE\u6226\u76F8\u624B\u304C\u898B\u3064\u304B\u308A\u307E\u3057\u305F\uFF01";
 
-    showMatchConfirmModal({
-      gameMode: hostGameMode,
-      gameModeName: hostGameModeName,
-      myColor: guestColor,
-      opponentColor: hostColor,
-      opponentName: window.remotePlayerName
-    });
-
-    getRoomRef(roomId, roomType).child('status').on('value', (snap) => {
-      const st = snap.val();
-      if (st === 'started') {
-        onMatchStarted(guestColor, hostGameMode);
-      } else if (st === 'cancelled') {
-        cancelMatch("対戦相手がマッチングをキャンセルしました。");
-      }
-    });
+  showMatchConfirmModal({
+    gameMode: hostGameMode,
+    gameModeName: hostGameModeName,
+    myColor: guestColor,
+    opponentColor: hostColor,
+    opponentName: window.remotePlayerName
   });
+
+  if (statusListenerRef) {
+    statusListenerRef.off();
+    statusListenerRef = null;
+  }
+  if (roomType === 'rooms') {
+    getRoomRef(roomId, roomType).child('moves').remove().catch(e => console.warn(e));
+  }
+  statusListenerRef = getRoomRef(roomId, roomType).child('status');
+  statusListenerRef.on('value', (snap) => {
+    const st = snap.val();
+    if (st === 'started') {
+      onMatchStarted(guestColor, hostGameMode);
+    } else if (st === 'cancelled') {
+      cancelMatch("\u5BFE\u6226\u76F8\u624B\u304C\u30DE\u30C3\u30C1\u30F3\u30B0\u3092\u30AD\u30E3\u30F3\u305B\u30EB\u3057\u307E\u3057\u305F\u3002");
+    }
+  });
+
+  if (roomType === 'random_rooms') {
+    getRoomRef(roomId, roomType).update({
+      status: 'matched',
+      guestName: playerName,
+      guestColor: guestColor
+    });
+  }
 }
 
-// マッチング確認モーダル表示
 function showMatchConfirmModal(config) {
   currentMatchConfig = config;
   hasStartedMatch = false;
@@ -308,8 +406,8 @@ function showMatchConfirmModal(config) {
   window.updateMatchingButtonUI(false);
 
   const modal = document.getElementById('match-confirm-modal');
-  const myColorStr = config.myColor === 1 ? "黒 (先手)" : "白 (後手)";
-  const opColorStr = config.opponentColor === 1 ? "黒 (先手)" : "白 (後手)";
+  const myColorStr = config.myColor === 1 ? "\u9ED2 (\u5148\u624B)" : "\u767D (\u5F8C\u624B)";
+  const opColorStr = config.opponentColor === 1 ? "\u9ED2 (\u5148\u624B)" : "\u767D (\u5F8C\u624B)";
 
   const myFormatted = window.formatDisplayName(window.localPlayerName);
   const opFormatted = window.formatDisplayName(config.opponentName);
@@ -321,12 +419,22 @@ function showMatchConfirmModal(config) {
   const btnStart = document.getElementById('btn-start-match');
   if (btnStart) {
     btnStart.disabled = false;
-    btnStart.textContent = "対戦開始";
+    btnStart.textContent = "\u5BFE\u6226\u958B\u59CB";
     btnStart.style.background = "linear-gradient(135deg, #10b981, #059669)";
     btnStart.style.fontSize = "1rem";
+    btnStart.onclick = () => {
+      triggerStartMatch();
+    };
   }
 
-  // 相手のReady状態を監視
+  const btnCancel = document.getElementById('btn-cancel-match');
+  if (btnCancel) {
+    btnCancel.onclick = () => {
+      cancelMatchByUser();
+    };
+  }
+
+  /* Monitor opponent ready status */
   if (readyListenerRef && currentRoomId) {
     readyListenerRef.off();
   }
@@ -334,7 +442,6 @@ function showMatchConfirmModal(config) {
   readyListenerRef = getRoomRef(currentRoomId, currentRoomType).child(readyKey);
   readyListenerRef.on('value', (snap) => {
     opponentHasReady = !!snap.val();
-    // 相手がReadyになり、自分も既にReadyであれば started に更新
     if (opponentHasReady && myHasReady && !hasStartedMatch) {
       getRoomRef(currentRoomId, currentRoomType).update({ status: 'started' });
     }
@@ -352,13 +459,11 @@ function showMatchConfirmModal(config) {
     if (countdownEl) countdownEl.textContent = timeLeft;
     if (timeLeft <= 0) {
       clearInterval(matchCountdownTimer);
-      // 10秒カウントダウン終了時はキャンセル
       timeoutMatch();
     }
   }, 1000);
 }
 
-// ユーザーが「対戦開始」ボタンを押した時（準備完了状態にする）
 function triggerStartMatch() {
   if (myHasReady || hasStartedMatch) return;
   myHasReady = true;
@@ -366,7 +471,7 @@ function triggerStartMatch() {
   const btnStart = document.getElementById('btn-start-match');
   if (btnStart) {
     btnStart.disabled = true;
-    btnStart.textContent = "相手の準備完了を待っています…";
+    btnStart.textContent = "\u76F8\u624B\u306E\u6E96\u5099\u5B8C\u4E86\u3092\u5F85\u3063\u3066\u3044\u307E\u3059\u2026";
     btnStart.style.background = "linear-gradient(135deg, #475569, #334155)";
     btnStart.style.fontSize = "0.82rem";
   }
@@ -374,7 +479,6 @@ function triggerStartMatch() {
   if (currentRoomId) {
     const myKey = isHost ? 'hostReady' : 'guestReady';
     getRoomRef(currentRoomId, currentRoomType).update({ [myKey]: true }).then(() => {
-      // 相手も既にReadyなら started に更新
       if (opponentHasReady && !hasStartedMatch) {
         getRoomRef(currentRoomId, currentRoomType).update({ status: 'started' });
       }
@@ -384,92 +488,67 @@ function triggerStartMatch() {
   }
 }
 
-// 10秒カウントダウン終了時（タイムアウトキャンセル）
 function timeoutMatch() {
   if (hasStartedMatch) return;
-  if (matchCountdownTimer) clearInterval(matchCountdownTimer);
-
   if (currentRoomId) {
     if (currentRoomType === 'random_rooms' && isHost) {
       getRoomRef(currentRoomId, currentRoomType).remove();
     } else {
       getRoomRef(currentRoomId, currentRoomType).update({ status: 'cancelled' });
     }
-    getRoomRef(currentRoomId, currentRoomType).child('status').off();
   }
-
-  cancelMatch("確認時間が終了したため、マッチングをキャンセルしました。");
+  cancelMatch("\u78BA\u8A8D\u6642\u9593\u304C\u7D42\u4E86\u3057\u305F\u305F\u3081\u3001\u30DE\u30C3\u30C1\u30F3\u30B0\u3092\u30AD\u30E3\u30F3\u305B\u30EB\u3057\u307E\u3057\u305F\u3002");
 }
 
-// 自身または相手のstarted受信によるゲーム開始
 function onMatchStarted(myColor, gameMode) {
-  if (hasStartedMatch) return;
-  hasStartedMatch = true;
+  try {
+    if (hasStartedMatch) return;
+    hasStartedMatch = true;
 
-  if (matchCountdownTimer) clearInterval(matchCountdownTimer);
-  if (readyListenerRef) {
-    readyListenerRef.off();
-    readyListenerRef = null;
+    if (matchCountdownTimer) {
+      clearInterval(matchCountdownTimer);
+      matchCountdownTimer = null;
+    }
+    if (readyListenerRef) {
+      try { readyListenerRef.off(); } catch (e) { console.warn(e); }
+      readyListenerRef = null;
+    }
+
+    const modal = document.getElementById('match-confirm-modal');
+    if (modal) modal.style.display = 'none';
+
+    const effectiveColor = (currentMatchConfig && currentMatchConfig.myColor) ? currentMatchConfig.myColor : myColor;
+    startGameOnline(effectiveColor, gameMode);
+  } catch (err) {
+    console.error("onMatchStarted error:", err);
+    alert("対戦開始処理でエラーが発生しました: " + (err.message || err));
   }
-
-  const modal = document.getElementById('match-confirm-modal');
-  if (modal) modal.style.display = 'none';
-
-  // 二重起動防止（タイトルが既に非表示なら対局中）
-  const titleScreen = document.getElementById('title-screen');
-  if (titleScreen && titleScreen.style.display === 'none') {
-    return;
-  }
-
-  startGameOnline(myColor, gameMode);
 }
 
-// ユーザーが「マッチング停止」ボタンをクリックした時
 window.netCancelMatching = function() {
   if (currentRoomId) {
     if (currentRoomType === 'random_rooms' && isHost) {
-      getRoomRef(currentRoomId).remove();
+      getRoomRef(currentRoomId, currentRoomType).remove();
     } else {
-      getRoomRef(currentRoomId).update({ status: 'cancelled' });
+      getRoomRef(currentRoomId, currentRoomType).update({ status: 'cancelled' });
     }
-    getRoomRef(currentRoomId).child('status').off();
   }
-
-  cancelMatch("マッチングを停止しました。");
+  cancelMatch("\u30DE\u30C3\u30C1\u30F3\u30B0\u3092\u505C\u6B62\u3057\u307E\u3057\u305F\u3002");
 };
 
-// ユーザーが確認モーダルの「やめる」をクリック
 function cancelMatchByUser() {
-  if (matchCountdownTimer) clearInterval(matchCountdownTimer);
-  if (readyListenerRef) {
-    readyListenerRef.off();
-    readyListenerRef = null;
-  }
-
-  const modal = document.getElementById('match-confirm-modal');
-  if (modal) modal.style.display = 'none';
-
   if (currentRoomId) {
     if (currentRoomType === 'random_rooms' && isHost) {
-      getRoomRef(currentRoomId).remove();
+      getRoomRef(currentRoomId, currentRoomType).remove();
     } else {
-      getRoomRef(currentRoomId).update({ status: 'cancelled' });
+      getRoomRef(currentRoomId, currentRoomType).update({ status: 'cancelled' });
     }
-    getRoomRef(currentRoomId, currentRoomType).child('status').off();
   }
-
-  cancelMatch("マッチングをキャンセルしました。");
+  cancelMatch("\u30DE\u30C3\u30C1\u30F3\u30B0\u3092\u30AD\u30E3\u30F3\u305B\u30EB\u3057\u307E\u3057\u305F\u3002");
 }
 
-// キャンセル時のUI復元
 function cancelMatch(msg) {
-  if (matchCountdownTimer) clearInterval(matchCountdownTimer);
-  if (readyListenerRef) {
-    readyListenerRef.off();
-    readyListenerRef = null;
-  }
-  myHasReady = false;
-  opponentHasReady = false;
+  cleanupOnlineSession(true);
 
   const modal = document.getElementById('match-confirm-modal');
   if (modal) modal.style.display = 'none';
@@ -477,17 +556,13 @@ function cancelMatch(msg) {
   const btnStart = document.getElementById('btn-start-match');
   if (btnStart) {
     btnStart.disabled = false;
-    btnStart.textContent = "対戦開始";
+    btnStart.textContent = "\u5BFE\u6226\u958B\u59CB";
     btnStart.style.background = "linear-gradient(135deg, #10b981, #059669)";
     btnStart.style.fontSize = "1rem";
   }
 
-  if (currentRoomId) {
-    getRoomRef(currentRoomId, currentRoomType).child('status').off();
-  }
-
   const statusMsg = document.getElementById('online-status-msg');
-  if (statusMsg) statusMsg.textContent = msg || "マッチング前の画面に戻りました。";
+  if (statusMsg) statusMsg.textContent = msg || "\u30DE\u30C3\u30C1\u30F3\u30B0\u524D\u306E\u753B\u9762\u306B\u623B\u308A\u307E\u3057\u305F\u3002";
 
   window.updateMatchingButtonUI(false);
 
@@ -495,12 +570,7 @@ function cancelMatch(msg) {
   document.getElementById('btn-play-white').disabled = false;
   window.isOnlineMode = false;
   window.isMatchingWaiting = false;
-  currentRoomId = null;
-  hasStartedMatch = false;
-  currentMatchConfig = null;
 }
-
-// モーダルのボタンイベント登録
 function attachModalListeners() {
   document.getElementById('btn-start-match')?.addEventListener('click', () => {
     triggerStartMatch();
@@ -518,7 +588,11 @@ if (document.readyState === 'loading') {
 
 // オンライン対戦開始
 function startGameOnline(myColor, gameMode) {
-  document.getElementById('title-screen').style.display = 'none';
+  window.isOnlineMode = true;
+  window.myOnlineColor = myColor;
+  window.opponentType = 'pvp';
+  const titleScreen = document.getElementById('title-screen');
+  if (titleScreen) titleScreen.style.display = 'none';
   const modal = document.getElementById('match-confirm-modal');
   if (modal) modal.style.display = 'none';
 
@@ -532,7 +606,11 @@ function startGameOnline(myColor, gameMode) {
   }
 
   // script.js の initGame を実行
-  window.initGame(myColor);
+  if (typeof window.initGame === 'function') {
+    window.initGame(myColor);
+  } else if (typeof initGame === 'function') {
+    initGame(myColor);
+  }
 
   // プレイヤー名と色の表示を更新（正しいID: player-label, cpu-label）
   const myColorStr = myColor === 1 ? "黒" : "白";
@@ -592,4 +670,27 @@ window.netSendAction = function(action) {
   if (!window.isOnlineMode || !currentRoomId) return;
   action.sender = isHost ? 'host' : 'guest';
   getRoomRef(currentRoomId).child('moves').push(action);
+};
+
+
+/* Finish game cleanup: update room status to finished for instant rematches */
+window.netFinishGame = function() {
+  if (!currentRoomId) return;
+
+  const roomId = currentRoomId;
+  const roomType = currentRoomType;
+
+  /* 1. Update Firebase status to 'finished' to allow rematches */
+  if (roomType === 'random_rooms') {
+    getRoomRef(roomId, roomType).remove().catch(e => console.warn(e));
+  } else {
+    getRoomRef(roomId, roomType).update({
+      status: 'finished',
+      moves: null,
+      finishedAt: firebase.database.ServerValue.TIMESTAMP
+    }).catch(e => console.warn(e));
+  }
+
+  /* 2. Remove all online listeners */
+  cleanupOnlineSession(false);
 };
