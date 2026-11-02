@@ -214,7 +214,7 @@ window.netMatchmake = function(password, playerName) {
 
   // 2. 合言葉あり：フレンド対戦
   currentRoomType = 'rooms';
-  const roomId = trimmedPassword;
+  const roomId = modeVal + '_' + trimmedPassword;
   cleanupOnlineSession(true);
 
   currentRoomId = roomId;
@@ -244,6 +244,9 @@ window.netMatchmake = function(password, playerName) {
         moves: null
       };
     } else if (currentData.status === 'waiting') {
+      if (currentData.gameMode && currentData.gameMode !== modeVal) {
+        return;
+      }
       const guestColor = currentData.hostColor === 1 ? 2 : 1;
       return {
         ...currentData,
@@ -280,7 +283,7 @@ window.netMatchmake = function(password, playerName) {
     if (roomData.guestName === playerName && roomData.status === 'matched') {
       joinAsGuest(roomId, roomData, playerName, modeVal, hostModeName => hostModeName || modeName, 'rooms');
     } else {
-      createAsHost(roomId, playerName, modeVal, modeName, 'rooms', "\u5408\u8A00\u8449\u300C" + roomId + "\u300D\u3067\u5BFE\u6226\u76F8\u624B\u3092\u5F85\u6A5F\u3057\u3066\u3044\u307E\u3059...", roomData.hostColor || 1);
+      createAsHost(roomId, playerName, modeVal, modeName, 'rooms', "合言葉「" + trimmedPassword + "」で対戦相手を待機しています…", roomData.hostColor || 1);
     }
   });
 };
