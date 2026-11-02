@@ -992,7 +992,8 @@ function promptMagic(index, isCpuDeck = false) {
   magicConfirmDesc.textContent = magic.spell.desc;
 
   if (magicConfirmImg) {
-    magicConfirmImg.src = (isCpuDeck && !cpuMagicRevealed) ? MAGIC_IMAGES[0] : (MAGIC_IMAGES[magic.spell.id] || MAGIC_IMAGES[0]);
+    const isFaceUp = !isCpuDeck || (opponentType === 'pvp' && !window.isOnlineMode) || cpuMagicRevealed;
+    magicConfirmImg.src = isFaceUp ? (MAGIC_IMAGES[magic.spell.id] || MAGIC_IMAGES[0]) : MAGIC_IMAGES[0];
   }
 
   magicConfirmModal.style.display = 'flex';
@@ -2702,6 +2703,15 @@ btnPlayWhite.addEventListener('click', () => {
   initGame(WHITE);
 });
 
+/* PVP play button */
+const btnPlayPvp = document.getElementById('btn-play-pvp');
+if (btnPlayPvp) {
+  btnPlayPvp.addEventListener('click', () => {
+    bgmSound.play().catch(e => console.warn(e));
+    initGame(BLACK);
+  });
+}
+
 // ネット対戦：マッチング開始ボタン
 const btnStartMatching = document.getElementById('btn-start-matching');
 if (btnStartMatching) {
@@ -2746,6 +2756,8 @@ restartBtn.addEventListener('click', () => {
   window.isOnlineMode = false;
   btnPlayBlack.disabled = false;
   btnPlayWhite.disabled = false;
+  const pvpBtn = document.getElementById('btn-play-pvp');
+  if (pvpBtn) pvpBtn.disabled = false;
   if (window.updateMatchingButtonUI) window.updateMatchingButtonUI(false);
   const statusMsg = document.getElementById('online-status-msg');
   if (statusMsg) statusMsg.textContent = "";
@@ -2790,6 +2802,7 @@ function updateModeUI() {
   const onlineSettings = document.getElementById('online-settings');
   const localButtons = document.getElementById('local-play-buttons');
   const onlineButtons = document.getElementById('online-play-buttons');
+  const pvpButtons = document.getElementById('pvp-play-buttons');
   const opType = document.querySelector('input[name="opponent-type"]:checked')?.value || 'cpu';
   let mode = document.querySelector('input[name="game-mode"]:checked')?.value || 'normal';
 
@@ -2809,9 +2822,15 @@ function updateModeUI() {
   if (localButtons && onlineButtons) {
     if (opType === 'online') {
       localButtons.style.display = 'none';
+      if (pvpButtons) pvpButtons.style.display = 'none';
       onlineButtons.style.display = 'block';
+    } else if (opType === 'pvp') {
+      localButtons.style.display = 'none';
+      if (pvpButtons) pvpButtons.style.display = 'block';
+      onlineButtons.style.display = 'none';
     } else {
       localButtons.style.display = 'flex';
+      if (pvpButtons) pvpButtons.style.display = 'none';
       onlineButtons.style.display = 'none';
     }
   }
@@ -2910,6 +2929,10 @@ document.querySelectorAll('input[name="opponent-type"]').forEach(radio => {
 // Ensure play buttons are not disabled on load
 if (typeof btnPlayBlack !== 'undefined' && btnPlayBlack) btnPlayBlack.disabled = false;
 if (typeof btnPlayWhite !== 'undefined' && btnPlayWhite) btnPlayWhite.disabled = false;
+const btnPlayPvpInit = document.getElementById('btn-play-pvp');
+if (btnPlayPvpInit) btnPlayPvpInit.disabled = false;
+  const pvpBtn = document.getElementById('btn-play-pvp');
+  if (pvpBtn) pvpBtn.disabled = false;
 
 // Global export of initGame
 window.initGame = initGame;
