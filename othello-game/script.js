@@ -948,6 +948,19 @@ function getMagicUnusableReason(spell, isCpuDeck = false) {
     }
   }
 
+  if (spell.id === 7 && !spell.name.startsWith('宝生マーゴ→')) {
+    const targetDeck = isCpuDeck ? playerMagics : cpuMagics;
+    const targetGlobal = isCpuDeck ? playerUsedMagicIds : cpuUsedMagicIds;
+    const u = targetDeck.filter(m => {
+      if (m.used) return false;
+      if (!isCpuDeck && isSpecialMode && opponentType === 'cpu') return true;
+      return !targetGlobal.has(m.spell.id);
+    });
+    if (u.length === 0) {
+      return "コピーできる対象がいません。";
+    }
+  }
+
   return null;
 }
 
@@ -979,8 +992,7 @@ function promptMagic(index, isCpuDeck = false) {
   magicConfirmDesc.textContent = magic.spell.desc;
 
   if (magicConfirmImg) {
-    const trueId = magic.spell.name.startsWith('宝生マーゴ→') ? 7 : magic.spell.id;
-    magicConfirmImg.src = (isCpuDeck && !cpuMagicRevealed) ? MAGIC_IMAGES[0] : (MAGIC_IMAGES[trueId] || MAGIC_IMAGES[0]);
+    magicConfirmImg.src = (isCpuDeck && !cpuMagicRevealed) ? MAGIC_IMAGES[0] : (MAGIC_IMAGES[magic.spell.id] || MAGIC_IMAGES[0]);
   }
 
   magicConfirmModal.style.display = 'flex';
@@ -1242,6 +1254,8 @@ function executeMagicLogic(magicId, casterIsCpu, index) {
         if (u.length > 0) {
           const cp = u[Math.floor(Math.random() * u.length)].spell; // コピー元の実体をクローン
           myDeck[index].spell = { ...cp, name: `宝生マーゴ→${cp.name}` };
+        } else {
+          showModalAlert("コピーできる対象がいません。");
         }
         break;
       }
