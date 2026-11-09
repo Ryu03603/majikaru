@@ -1,4 +1,4 @@
-// Firebase Configuration
+﻿// Firebase Configuration
 const firebaseConfig = {
   apiKey: "AIzaSyCt2PA4Tq9u8RQxFRCs_0olJJj6dvIt0xk",
   authDomain: "majikaru-73859.firebaseapp.com",
@@ -139,8 +139,9 @@ window.updateMatchingButtonUI = function(isWaiting) {
 let onlineRandomSeed = 1;
 function setOnlineSeed(seed) {
   let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+  const strSeed = String(seed || "default");
+  for (let i = 0; i < strSeed.length; i++) {
+    hash = ((hash << 5) - hash) + strSeed.charCodeAt(i);
     hash |= 0;
   }
   onlineRandomSeed = Math.abs(hash) + 1;
@@ -238,7 +239,9 @@ window.netMatchmake = function(password, playerName) {
         hostColor: hostColor,
         gameMode: modeVal,
         gameModeName: modeName,
+
         timestamp: now,
+        matchSeed: 'seed_' + now.toString(36) + '_' + Math.floor(originalMathRandom() * 1000000).toString(36),
         hostReady: false,
         guestReady: false,
         moves: null
@@ -296,8 +299,8 @@ function createAsHost(roomId, playerName, modeVal, modeName, roomType, waitingMs
   currentRoomId = roomId;
   currentRoomType = roomType;
   isHost = true;
+  setOnlineSeed("host_" + roomId + "_" + Date.now());
   window.isOnlineMode = true;
-  setOnlineSeed(roomId);
 
   if (statusMsg) statusMsg.textContent = waitingMsg;
   window.updateMatchingButtonUI(true);
@@ -319,12 +322,15 @@ function createAsHost(roomId, playerName, modeVal, modeName, roomType, waitingMs
         window.remotePlayerName = rData.guestName || "\u76F8\u624B";
         const myCol = rData.hostColor || hostColor;
         const opCol = myCol === 1 ? 2 : 1;
+        const matchSeed = rData.matchSeed || ('seed_' + (rData.timestamp || Date.now()));
+        setOnlineSeed(matchSeed);
         showMatchConfirmModal({
           gameMode: rData.gameMode || modeVal,
           gameModeName: rData.gameModeName || modeName,
           myColor: myCol,
           opponentColor: opCol,
-          opponentName: window.remotePlayerName
+          opponentName: window.remotePlayerName,
+          matchSeed: matchSeed
         });
       });
     } else if (st === 'cancelled') {
@@ -341,6 +347,8 @@ function createAsHost(roomId, playerName, modeVal, modeName, roomType, waitingMs
       hostColor: hostColor,
       gameMode: modeVal,
       gameModeName: modeName,
+
+      matchSeed: 'seed_' + Date.now().toString(36) + '_' + Math.floor(originalMathRandom() * 1000000).toString(36),
       timestamp: firebase.database.ServerValue.TIMESTAMP
     }).catch(err => {
       console.error(err);
@@ -359,7 +367,8 @@ function joinAsGuest(roomId, data, playerName, modeVal, getModeName, roomType) {
   currentRoomType = roomType;
   isHost = false;
   window.isOnlineMode = true;
-  setOnlineSeed(roomId);
+  const matchSeed = data.matchSeed || ('seed_' + (data.timestamp || Date.now()));
+  setOnlineSeed(matchSeed);
   window.remotePlayerName = data.hostName || "\u76F8\u624B";
 
   const hostGameMode = data.gameMode || modeVal;
@@ -372,7 +381,8 @@ function joinAsGuest(roomId, data, playerName, modeVal, getModeName, roomType) {
     gameModeName: hostGameModeName,
     myColor: guestColor,
     opponentColor: hostColor,
-    opponentName: window.remotePlayerName
+    opponentName: window.remotePlayerName,
+    matchSeed: matchSeed
   });
 
   if (statusListenerRef) {
@@ -594,12 +604,17 @@ function startGameOnline(myColor, gameMode) {
   window.isOnlineMode = true;
   window.myOnlineColor = myColor;
   window.opponentType = 'pvp';
+
+  // 試合開始直前に両プレイヤーで確実に同一シードを再設定し、乱数列の先頭から同期を開始する
+  if (currentMatchConfig && currentMatchConfig.matchSeed) {
+    setOnlineSeed(currentMatchConfig.matchSeed);
+  }
   const titleScreen = document.getElementById('title-screen');
   if (titleScreen) titleScreen.style.display = 'none';
   const modal = document.getElementById('match-confirm-modal');
   if (modal) modal.style.display = 'none';
 
-  window.opponentType = 'pvp';
+
   if (gameMode === 'manosaba') {
     window.isManosabaMode = true;
     window.isSpecialMode = false;
