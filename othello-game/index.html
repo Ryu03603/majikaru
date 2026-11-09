@@ -13,7 +13,7 @@
       font-family: sans-serif;
     }
   </style>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20261109_03">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 
@@ -213,6 +213,21 @@
       </div>
     </div>
 
+    <!-- Magic View Modal (効果確認専用モーダル) -->
+    <div class="modal-overlay" id="magic-view-modal" style="display: none; z-index: 100000;">
+      <div class="modal-content glass-panel small">
+        <h2 id="magic-view-name" style="font-size: 1.8rem; margin-bottom: 16px; color: #fbbf24;">魔法名</h2>
+        <div style="display: flex; align-items: flex-start; gap: 16px; margin-bottom: 24px; text-align: left;">
+          <img id="magic-view-img" src="img/00_back.png"
+            style="width: 80px; height: 112px; object-fit: cover; border-radius: 8px; flex-shrink: 0;" alt="魔法のカード">
+          <p id="magic-view-desc" style="margin: 0; line-height: 1.6; align-self: center;">魔法の説明</p>
+        </div>
+        <div class="button-group" style="flex-direction: row; justify-content: center;">
+          <button id="btn-close-magic-view" class="primary-btn" style="padding: 10px 32px;">閉じる</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Generic Alert Modal -->
     <div class="modal-overlay" id="generic-alert-modal" style="display: none; z-index: 100000;">
       <div class="modal-content glass-panel small">
@@ -289,7 +304,9 @@
           通常のオセロゲームに加え、特殊な効果を持つ「魔法」を駆使して戦う特殊な対局モードです。<br><br>
           ・自分のターンには石を置くまたは魔法を使用できます。<br>
           ・ゲーム開始時に13種類の魔法の中からランダムに5つが手札として配られます。<br>
-          ・魔法は基本的に1度きりです。二階堂ヒロで引き直しても、既に使用した魔法は使用不可です。
+          ・魔法は基本的に1度きりです。二階堂ヒロで引き直しても、既に使用した魔法は使用不可です。<br>
+          ・PCではカードにカーソルを合わせることで魔法効果を確認できます。<br>
+          ・スマホの場合は、カードを長押しタップすることで、自分のターン以外や相手のカード（表向き時）でもいつでも効果を確認できます。
         </p>
 
         <h3
@@ -381,7 +398,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
   <script src="firebase-setup.js?v=20261103_03"></script>
-  <script src="script.js?v=20261103_03"></script>
+  <script src="script.js?v=20261109_03"></script>
 </body>
 
 </html>

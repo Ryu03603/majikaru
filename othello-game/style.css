@@ -289,6 +289,16 @@ h1 {
   position: relative;
   color: #fcd34d;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.magic-card img {
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none;
 }
 
 .magic-card:hover {
@@ -299,8 +309,8 @@ h1 {
 
 .magic-card.used {
   opacity: 0.3;
-  pointer-events: none;
   filter: grayscale(100%);
+  cursor: default;
 }
 
 #cpu-magic-deck .magic-card {

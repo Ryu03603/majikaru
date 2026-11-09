@@ -211,6 +211,11 @@ const magicConfirmImg = document.getElementById('magic-confirm-img');
 const magicConfirmDesc = document.getElementById('magic-confirm-desc');
 const btnCancelMagic = document.getElementById('btn-cancel-magic');
 const btnConfirmMagic = document.getElementById('btn-confirm-magic');
+const magicViewModal = document.getElementById('magic-view-modal');
+const magicViewName = document.getElementById('magic-view-name');
+const magicViewImg = document.getElementById('magic-view-img');
+const magicViewDesc = document.getElementById('magic-view-desc');
+const btnCloseMagicView = document.getElementById('btn-close-magic-view');
 const targetBar = document.getElementById('targeting-bar');
 const targetInfo = document.getElementById('targeting-info');
 const colorSelectModal = document.getElementById('color-select-modal');
@@ -362,7 +367,7 @@ window.handleRemoteTimeout = function() {
  */
 function showModalAlert(message, callback) {
   if (genericAlertModal && genericAlertMessage && btnCloseGenericAlert) {
-    genericAlertMessage.textContent = message;
+    genericAlertMessage.innerHTML = message;
     genericAlertModal.style.display = 'flex';
     const closeHandler = () => {
       genericAlertModal.style.display = 'none';
@@ -646,6 +651,95 @@ const MAGIC_IMAGES = {
   13: "img/670_meruru.png"
 };
 
+/**
+ * 魔法の効果確認専用モーダルを表示します（スマホ長押し等）。
+ * @param {object} magic - 魔法オブジェクト ({ spell: { id, name, desc } })
+ */
+function showMagicViewModal(magic) {
+  if (!magic || !magic.spell) return;
+  if (magicViewName) magicViewName.textContent = magic.spell.name;
+  if (magicViewDesc) magicViewDesc.textContent = magic.spell.desc;
+  if (magicViewImg) {
+    magicViewImg.src = MAGIC_IMAGES[magic.spell.id] || MAGIC_IMAGES[0];
+  }
+  if (magicViewModal) {
+    magicViewModal.style.display = 'flex';
+  }
+}
+
+// 閲覧モーダルの閉じるボタンおよび背景タップで閉じるリスナー登録
+if (btnCloseMagicView && magicViewModal) {
+  btnCloseMagicView.addEventListener('click', () => {
+    magicViewModal.style.display = 'none';
+  });
+  magicViewModal.addEventListener('click', (e) => {
+    if (e.target === magicViewModal) {
+      magicViewModal.style.display = 'none';
+    }
+  });
+}
+
+/**
+ * カード要素にスマホ向けの長押し効果確認リスナーを付与します。
+ * @param {HTMLElement} cardEl - カードのDOM要素
+ * @param {function} getMagicFunc - 魔法オブジェクトを返す関数
+ */
+function attachCardLongPress(cardEl, getMagicFunc) {
+  let touchTimer = null;
+  let startX = 0;
+  let startY = 0;
+  let isLongPress = false;
+
+  cardEl.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    startX = touch.clientX;
+    startY = touch.clientY;
+    isLongPress = false;
+
+    touchTimer = setTimeout(() => {
+      isLongPress = true;
+      const magic = getMagicFunc();
+      if (magic) {
+        showMagicViewModal(magic);
+      }
+    }, 450);
+  }, { passive: true });
+
+  cardEl.addEventListener('touchmove', (e) => {
+    if (!touchTimer) return;
+    const touch = e.touches[0];
+    if (Math.abs(touch.clientX - startX) > 10 || Math.abs(touch.clientY - startY) > 10) {
+      clearTimeout(touchTimer);
+      touchTimer = null;
+    }
+  }, { passive: true });
+
+  const cancelTouch = () => {
+    if (touchTimer) {
+      clearTimeout(touchTimer);
+      touchTimer = null;
+    }
+  };
+
+  cardEl.addEventListener('touchend', cancelTouch);
+  cardEl.addEventListener('touchcancel', cancelTouch);
+
+  // 長押し後の通常タップ（click）イベントをキャプチャフェーズでキャンセル
+  cardEl.addEventListener('click', (e) => {
+    if (isLongPress) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      isLongPress = false;
+    }
+  }, true);
+
+  // モバイルブラウザの画像長押しコンテキストメニューを無効化
+  cardEl.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+  });
+}
+
 function renderMagics(animateFlipTarget = false) {
   if (!isManosabaMode) return;
 
@@ -673,6 +767,8 @@ function renderMagics(animateFlipTarget = false) {
     // ツールチップ(説明文ポップアップ)の追加
     const tt = document.createElement('div'); tt.className = 'magic-tooltip'; tt.textContent = m.spell.desc;
     card.appendChild(tt);
+    // 長押しタップで魔法効果を確認（スマホ対応）
+    attachCardLongPress(card, () => m);
 
     // カードを押したときの処理
     card.addEventListener('click', () => {
@@ -724,6 +820,8 @@ function renderMagics(animateFlipTarget = false) {
     if ((opponentType === 'pvp' && !window.isOnlineMode) || cpuMagicRevealed) {
       const tt = document.createElement('div'); tt.className = 'magic-tooltip'; tt.textContent = m.spell.desc;
       card.appendChild(tt);
+    // 長押しタップで魔法効果を確認（スマホ対応）
+    attachCardLongPress(card, () => m);
     }
 
     // 2人プレイモードではクリックを許可する
@@ -1163,6 +1261,7 @@ function endMagicTurn() {
       type: 'magic',
       spellId: window.lastUsedSpellId || 0,
       spellName: window.lastUsedSpellName || "魔法",
+      deletedCardName: window.lastDeletedCardName || null,
       boardJson: JSON.stringify(board),
       fireStatesJson: JSON.stringify(fireStates),
       specialStonesJson: JSON.stringify(specialStones),
@@ -1183,6 +1282,7 @@ function endMagicTurn() {
       timeLeft: playerTimeLeft
     });
   }
+  window.lastDeletedCardName = null;
   currentTurn = currentTurn === BLACK ? WHITE : BLACK;
   updateGameState(); // ボードの状態を評価して相手の処理へ
 }
@@ -1202,7 +1302,19 @@ function executeMagicLogic(magicId, casterIsCpu, index) {
           if (!casterIsCpu && isSpecialMode && opponentType === 'cpu') return true;
           return !targetGlobal.has(m.id);
         });
-        if (u.length > 0) { targetDeck.splice(u[Math.floor(Math.random() * u.length)].i, 1); }
+        if (u.length > 0) {
+          const chosen = u[Math.floor(Math.random() * u.length)];
+          const targetCard = targetDeck[chosen.i];
+          const deletedName = targetCard && targetCard.spell ? targetCard.spell.name : "魔法";
+          targetDeck.splice(chosen.i, 1);
+          window.lastDeletedCardName = deletedName;
+          if (!casterIsCpu && opponentType !== 'pvp') {
+            showModalAlert(`桜羽エマの魔法により、相手の魔法「<strong>${deletedName}</strong>」を消滅させました！`);
+          } else if (opponentType === 'pvp') {
+            const victimName = casterIsCpu ? "プレイヤー1" : "プレイヤー2";
+            showModalAlert(`桜羽エマの魔法により、${victimName}の魔法「<strong>${deletedName}</strong>」を消滅させました！`);
+          }
+        }
         break;
       }
       case 2: { // 二階堂ヒロ: 自分と相手の魔法をそれぞれの状態で引き直す。
@@ -1600,6 +1712,7 @@ function executeMove(move) {
   if (currentTurn === playerColor) { if (playerMagicBlocked > 0) playerMagicBlocked--; forcedOpponentMove = null; }
   else { if (cpuMagicBlocked > 0) cpuMagicBlocked--; forcedOpponentMove = null; }
 
+  window.lastDeletedCardName = null;
   currentTurn = currentTurn === BLACK ? WHITE : BLACK;
   updateGameState();
 
@@ -2181,7 +2294,12 @@ function executeCpuMagic(spell, index) {
   switch (spell.id) {
     case 1: {
       const u = playerMagics.map((m, i) => ({ i, id: m.spell.id, used: m.used })).filter(m => !m.used && !playerUsedMagicIds.has(m.id));
-      if (u.length > 0) { cb = () => { playerMagics.splice(u[Math.floor(Math.random() * u.length)].i, 1); }; } else { ok = false; }
+      if (u.length > 0) {
+        const chosen = u[Math.floor(Math.random() * u.length)];
+        const targetCard = playerMagics[chosen.i];
+        window.cpuDeletedCardName = targetCard && targetCard.spell ? targetCard.spell.name : "魔法";
+        cb = () => { playerMagics.splice(chosen.i, 1); };
+      } else { ok = false; }
       break;
     }
     case 2: cb = () => {
@@ -2259,7 +2377,12 @@ function executeCpuMagic(spell, index) {
     const msgEl = document.getElementById('cpu-magic-message');
     const btnClose = document.getElementById('btn-close-cpu-magic');
 
-    msgEl.textContent = `${getCpuName()} が 魔法「${spell.name}」を使用しました！`;
+    let extraDesc = "";
+    if (spell.id === 1 && window.cpuDeletedCardName) {
+      extraDesc = `<br><span style="display:inline-block; margin-top:8px; font-size:1.05rem; color:#f87171;">消されたカード：「<strong style="color:#f87171; font-weight:bold;">${window.cpuDeletedCardName}</strong>」</span>`;
+      window.cpuDeletedCardName = null;
+    }
+    msgEl.innerHTML = `${getCpuName()} が 魔法「<strong>${spell.name}</strong>」を使用しました！${extraDesc}`;
     modal.style.display = 'flex';
 
     // 一度だけクリックイベントをリッスンするための関数
@@ -2430,7 +2553,11 @@ window.handleRemoteMagic = function(data) {
 
   if (modal && msgEl && btnClose) {
     const opName = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "相手";
-    msgEl.textContent = `${opName} が 魔法「${data.spellName}」を使用しました！`;
+    let extraDesc = "";
+    if (data.spellId === 1 && data.deletedCardName) {
+      extraDesc = `<br><span style="display:inline-block; margin-top:8px; font-size:1.05rem; color:#f87171;">消されたカード：「<strong style="color:#f87171; font-weight:bold;">${data.deletedCardName}</strong>」</span>`;
+    }
+    msgEl.innerHTML = `${opName} が 魔法「<strong>${data.spellName}</strong>」を使用しました！${extraDesc}`;
     modal.style.display = 'flex';
 
     const closeHandler = () => {
