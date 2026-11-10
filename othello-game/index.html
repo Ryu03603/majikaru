@@ -13,7 +13,7 @@
       font-family: sans-serif;
     }
   </style>
-  <link rel="stylesheet" href="style.css?v=20261109_04">
+  <link rel="stylesheet" href="style.css?v=20261110_01">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 
@@ -251,12 +251,13 @@
     </div>
 
     <!-- Noa Color selection modal -->
-    <div class="modal-overlay" id="color-select-modal" style="display: none;">
+    <div class="modal-overlay" id="color-select-modal" style="display: none; z-index: 99999;">
       <div class="modal-content glass-panel small">
-        <h2 style="font-size: 1.5rem;">色を選択</h2>
-        <div class="button-group" style="flex-direction: row; justify-content: center; gap: 16px; margin-top: 20px;">
-          <button id="btn-color-black" class="primary-btn" style="background:#111827">黒に変更</button>
-          <button id="btn-color-white" class="primary-btn" style="background:#f8fafc; color:#111827">白に変更</button>
+        <h2 style="font-size: 1.5rem; margin-bottom: 12px; color: #fbbf24;">城ケ崎ノア（液体操作）</h2>
+        <p id="color-select-message" style="margin-bottom: 24px; font-size: 1.1rem; line-height: 1.5;"></p>
+        <div class="button-group" style="flex-direction: row; justify-content: center; gap: 16px;">
+          <button id="btn-color-cancel" class="primary-btn secondary-btn">キャンセル</button>
+          <button id="btn-color-confirm" class="primary-btn">変更する</button>
         </div>
       </div>
     </div>
@@ -398,7 +399,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
   <script src="firebase-setup.js?v=20261109_04"></script>
-  <script src="script.js?v=20261109_04"></script>
+  <script src="script.js?v=20261110_01"></script>
 </body>
 
 </html>

@@ -1067,6 +1067,7 @@ function cancelTargeting() {
   activeMagicIndex = null;
   targetingCache = null;
   if (targetBar) targetBar.style.display = 'none';
+  if (colorSelectModal) colorSelectModal.style.display = 'none';
 
   document.querySelectorAll('.opponent-valid-move').forEach(el => el.classList.remove('opponent-valid-move'));
   for (let r = 0; r < ROWS; r++) {
@@ -1450,13 +1451,23 @@ function handleTargetingClick(r, c) {
     forcedOpponentMove = { r, c };
 
     // 多重動作防止のため、魔法のインデックスをローカルに確保して全体を無効化する
-    const idx = activeMagicIndex; activeMagicIndex = null;
-    commitMagic(idx, activeMagicIsCpuDeck, null);
+      const idx = activeMagicIndex;
+    activeMagicIndex = null;
+    targetingCache = null;
+      commitMagic(idx, activeMagicIsCpuDeck, null);
   }
   else if (targetingState === 'stone') { // 城ケ崎ノア
     // 石がある場所のみ許可し、その後に表示されるカラー選択の中間ダイアログを開く
     if (v === EMPTY) { showModalAlert("石を選択してください。"); return; }
-    targetingCache = { r, c };
+    targetingCache = { r, c, fromColor: v, toColor: v === BLACK ? WHITE : BLACK };
+    const colorSelectMsg = document.getElementById('color-select-message');
+    if (colorSelectMsg) {
+      if (v === BLACK) {
+        colorSelectMsg.innerHTML = "指定した<strong>黒石</strong>を<strong>白石</strong>に変更しますか？";
+      } else {
+        colorSelectMsg.innerHTML = "指定した<strong>白石</strong>を<strong>黒石</strong>に変更しますか？";
+      }
+    }
     colorSelectModal.style.display = 'flex';
   }
   else if (targetingState === 'miria_1') { // 佐伯ミリア 第一選択
@@ -1486,15 +1497,19 @@ function handleTargetingClick(r, c) {
       playerLastActionableMagic = { id: 6, r1: targetingCache.r1, c1: targetingCache.c1, r2: r, c2: c };
     }
 
-    const idx = activeMagicIndex; activeMagicIndex = null;
-    commitMagic(idx, activeMagicIsCpuDeck, null);
+      const idx = activeMagicIndex;
+    activeMagicIndex = null;
+    targetingCache = null;
+      commitMagic(idx, activeMagicIsCpuDeck, null);
   }
   else if (targetingState === 'cell') { // 紫藤アリサ
     if (v === EMPTY) { showModalAlert("石のある場所を選択してください。"); return; }
     if (fireStates.find(f => f.r === r && f.c === c)) { showModalAlert("既に発火している石です。別の石を選んでください。"); return; }
     applyFire(r, c);
-    const idx = activeMagicIndex; activeMagicIndex = null;
-    commitMagic(idx, activeMagicIsCpuDeck, null);
+      const idx = activeMagicIndex;
+    activeMagicIndex = null;
+    targetingCache = null;
+      commitMagic(idx, activeMagicIsCpuDeck, null);
   }
   else if (targetingState === 'hanna_1') { // 遠野ハンナ 第一選択
     if (v === EMPTY) { showModalAlert("石を選択してください。"); return; }
@@ -1520,34 +1535,54 @@ function handleTargetingClick(r, c) {
       playerLastActionableMagic = { id: 11, r1: targetingCache.r1, c1: targetingCache.c1, r2: r, c2: c, col: targetingCache.col };
     }
 
-    const idx = activeMagicIndex; activeMagicIndex = null;
-    commitMagic(idx, activeMagicIsCpuDeck, null);
+      const idx = activeMagicIndex;
+    activeMagicIndex = null;
+    targetingCache = null;
+      commitMagic(idx, activeMagicIsCpuDeck, null);
   }
 }
 
 // 城ケ崎ノアにおけるカラー選択ダイアログの「黒にする」ボタンの処理
-document.getElementById('btn-color-black').addEventListener('click', () => {
-  if (activeMagicIndex === null) return; // 既に別の魔法が終了して無効なら多重防止のためリターン
+const btnColorConfirm = document.getElementById('btn-color-confirm');
+if (btnColorConfirm) {
+  btnColorConfirm.addEventListener('click', () => {
+    if (activeMagicIndex === null || !targetingCache) return;
   colorSelectModal.style.display = 'none';
-  board[targetingCache.r][targetingCache.c] = BLACK;
-  specialStones[targetingCache.r][targetingCache.c] = 'changed'; // 紫に光らせる記録
-  const idx = activeMagicIndex; activeMagicIndex = null;
-  commitMagic(idx, activeMagicIsCpuDeck, null);
+    const r = targetingCache.r;
+    const c = targetingCache.c;
+    const origColor = targetingCache.fromColor;
+    const newColor = targetingCache.toColor;
+    board[r][c] = newColor;
+    specialStones[r][c] = 'changed'; // 紫に光らせる記録
+    if (!activeMagicIsCpuDeck) {
+      playerLastActionableMagic = { id: 4, r, c, originalColor: origColor };
+    }
+    const idx = activeMagicIndex;
+    activeMagicIndex = null;
+    targetingCache = null;
+    commitMagic(idx, activeMagicIsCpuDeck, null);
 });
 
-// 城ケ崎ノアにおけるカラー選択ダイアログの「白にする」ボタンの処理
-document.getElementById('btn-color-white').addEventListener('click', () => {
-  if (activeMagicIndex === null) return;
-  colorSelectModal.style.display = 'none';
-  const origColor = board[targetingCache.r][targetingCache.c];
-  board[targetingCache.r][targetingCache.c] = WHITE;
-  specialStones[targetingCache.r][targetingCache.c] = 'changed';
-  if (!activeMagicIsCpuDeck) {
-    playerLastActionableMagic = { id: 4, r: targetingCache.r, c: targetingCache.c, originalColor: origColor };
-  }
-  const idx = activeMagicIndex; activeMagicIndex = null;
-  commitMagic(idx, activeMagicIsCpuDeck, null);
-});
+}
+
+// 城ケ崎ノアにおけるカラー選択確認ダイアログの「キャンセル」ボタンの処理
+const btnColorCancel = document.getElementById('btn-color-cancel');
+if (btnColorCancel) {
+  btnColorCancel.addEventListener('click', () => {
+    colorSelectModal.style.display = 'none';
+    targetingCache = null;
+  });
+}
+
+// モーダル背景タップでもキャンセル可能にする
+if (colorSelectModal) {
+  colorSelectModal.addEventListener('click', (e) => {
+    if (e.target === colorSelectModal) {
+      colorSelectModal.style.display = 'none';
+      targetingCache = null;
+    }
+  });
+}
 
 
 
