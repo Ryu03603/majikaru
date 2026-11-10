@@ -751,6 +751,19 @@ function attachCardLongPress(cardEl, getMagicFunc) {
   });
 }
 
+// 山札のスマホ長押し効果確認リスナー登録
+const deckInfo = {
+  spell: {
+    id: 0,
+    name: "山札",
+    desc: "基本的にカードをドローすることはできません。"
+  }
+};
+const pDeckStackEl = document.getElementById('player-deck-stack');
+const cDeckStackEl = document.getElementById('cpu-deck-stack');
+if (pDeckStackEl) attachCardLongPress(pDeckStackEl, () => deckInfo);
+if (cDeckStackEl) attachCardLongPress(cDeckStackEl, () => deckInfo);
+
 function renderMagics(animateFlipTarget = false) {
   if (!isManosabaMode) return;
 

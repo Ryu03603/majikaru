@@ -391,6 +391,40 @@ h1 {
   display: block;
 }
 
+/* Deck stack tooltips */
+#player-deck-stack,
+#cpu-deck-stack {
+  cursor: pointer;
+}
+
+#player-deck-stack .deck-tooltip,
+#cpu-deck-stack .deck-tooltip {
+  display: none;
+  pointer-events: none;
+  white-space: normal;
+  width: max-content;
+  max-width: 240px;
+}
+
+#player-deck-stack .deck-tooltip {
+  bottom: calc(100% + 10px);
+  left: 0;
+  transform: none;
+}
+
+#cpu-deck-stack .deck-tooltip {
+  top: calc(100% + 10px);
+  bottom: auto;
+  right: 0;
+  left: auto;
+  transform: none;
+}
+
+#player-deck-stack:hover .deck-tooltip,
+#cpu-deck-stack:hover .deck-tooltip {
+  display: block;
+}
+
 /* ==========================================
    6. Modals and Dialogs
    ========================================== */
@@ -881,7 +915,9 @@ h1 {
 }
 
 @media (hover: none) {
-  .magic-card:hover .magic-tooltip {
+  .magic-card:hover .magic-tooltip,
+  #player-deck-stack:hover .deck-tooltip,
+  #cpu-deck-stack:hover .deck-tooltip {
     display: none !important;
   }
 }

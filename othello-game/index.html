@@ -13,7 +13,7 @@
       font-family: sans-serif;
     }
   </style>
-  <link rel="stylesheet" href="style.css?v=20261110_05">
+  <link rel="stylesheet" href="style.css?v=20261110_07">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 
@@ -44,6 +44,7 @@
       style="display: none; justify-content: center; align-items: center; gap: 20px; margin-bottom: 12px;">
       <div class="magic-deck" id="cpu-magic-deck" style="display: flex;"></div>
       <div id="cpu-deck-stack" style="position: relative; width: 65px; aspect-ratio: 5 / 7;">
+        <div class="magic-tooltip deck-tooltip">基本的にカードをドローすることはできません。</div>
         <div class="magic-card deck-card" style="position:absolute; z-index: 3;"><img src="img/00_back.png" alt="山札"
             style="width:100%; height:100%; object-fit:cover; border-radius:8px;"></div>
         <div class="magic-card deck-card" style="position:absolute; top:-2px; left:2px; z-index:2;"><img
@@ -93,6 +94,7 @@
     <div id="player-hand-area"
       style="display: none; justify-content: center; align-items: center; gap: 20px; margin-top: 12px;">
       <div id="player-deck-stack" style="position: relative; width: 65px; aspect-ratio: 5 / 7;">
+        <div class="magic-tooltip deck-tooltip">基本的にカードをドローすることはできません。</div>
         <div class="magic-card deck-card" style="position:absolute; z-index: 3;"><img src="img/00_back.png" alt="山札"
             style="width:100%; height:100%; object-fit:cover; border-radius:8px;"></div>
         <div class="magic-card deck-card" style="position:absolute; top:-2px; left:2px; z-index:2;"><img
@@ -399,7 +401,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
   <script src="firebase-setup.js?v=20261109_04"></script>
-  <script src="script.js?v=20261110_06"></script>
+  <script src="script.js?v=20261110_07"></script>
 </body>
 
 </html>
