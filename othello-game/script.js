@@ -1649,6 +1649,11 @@ function updateBoardDOM() {
         if (disc) {
           disc.className = `disc ${val === WHITE ? 'is-white' : 'is-black'}`;
 
+          // 直前に打たれた石であれば、ドット表示用クラスを付与
+          if (lastPlacedMove && lastPlacedMove.r === r && lastPlacedMove.c === c) {
+            disc.classList.add('last-placed');
+          }
+
           // 各種魔法によって光る演出が指定されている場合は、そのクラスを重ねがけする
           if (specialStones[r][c] === 'moved' || specialStones[r][c] === 'selected') disc.classList.add('moved-stone-effect');
           else if (specialStones[r][c] === 'changed') disc.classList.add('changed-stone-effect');
