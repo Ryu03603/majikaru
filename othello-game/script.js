@@ -200,6 +200,9 @@ const gameOverModal = document.getElementById('game-over-modal');
 const passModal = document.getElementById('pass-modal');
 const winnerText = document.getElementById('winner-text');
 const surrenderBtn = document.getElementById('surrender-btn');
+const undoBtn = document.getElementById('undo-btn');
+let undoSnapshot = null;         // 1手戻る用スナップショット（直前のプレイヤー着手前状態）
+let pendingUndoSnapshot = null;  // プレイヤー着手直後の保留スナップショット
 const btnPlayBlack = document.getElementById('btn-play-black');
 const btnPlayWhite = document.getElementById('btn-play-white');
 const radios = document.getElementsByName('game-mode');
@@ -486,12 +489,14 @@ function initGame(selectedPlayerColor) {
   targetingState = null; targetingCache = null; activeMagicIndex = null; activeMagicIsCpuDeck = false;
   forcedOpponentMove = null; cpuMagicBlocked = 0; playerMagicBlocked = 0; cpuMagicRevealed = false;
   lastPlacedMove = null; bannedOpponentMove = null;
+  undoSnapshot = null; pendingUndoSnapshot = null;
   // 特殊装飾用の配列もリセット
   specialStones = Array(ROWS).fill().map(() => Array(COLS).fill(null));
 
   // UIの非表示設定などのリセット
   titleScreenModal.style.display = 'none'; gameOverModal.style.display = 'none';
   passModal.style.display = 'none'; confirmSurrenderModal.style.display = 'none'; surrenderBtn.style.display = 'block';
+  updateUndoButtonUI();
 
   // スコアボード上のUIテキストを正しい色に設定
   if (window.isOnlineMode) {
@@ -1200,6 +1205,10 @@ function commitMagic(index, casterIsCpu, logicCallback, isMargo = false) {
     window.lastUsedSpellId = magic.spell.id;
     window.lastUsedSpellName = magic.spell.name;
     window.lastUsedMagicIndex = index;
+    // プレイヤーが魔法を使用した場合は1手戻るを無効化
+    undoSnapshot = null;
+    pendingUndoSnapshot = null;
+    updateUndoButtonUI();
   }
 
   playMagicSound(magic.spell.id);
@@ -1715,6 +1724,12 @@ function handleCellClick(r, c) {
       }
     }
 
+    // CPU戦でプレイヤーが石を置く直前のスナップショットを記録
+    if (opponentType === 'cpu' && !window.isOnlineMode && currentTurn === playerColor) {
+      pendingUndoSnapshot = createGameStateSnapshot();
+      updateUndoButtonUI();
+    }
+
     // ネット対戦時は着手を相手に送信 (持ち時間の同期情報も含める)
     if (window.isOnlineMode && window.netSendAction) {
       window.netSendAction({ type: 'place', r, c, timeLeft: playerTimeLeft });
@@ -1840,10 +1855,135 @@ function saveHistoryState() {
 }
 
 /**
+ * 1手戻る（Undo）用の完全なゲーム状態スナップショットを生成します。
+ */
+function createGameStateSnapshot() {
+  return {
+    board: JSON.parse(JSON.stringify(board)),
+    playerScores: { ...playerScores },
+    currentTurn: currentTurn,
+    currentMoveHistory: currentMoveHistory,
+    lastPlacedMove: lastPlacedMove ? { ...lastPlacedMove } : null,
+    specialStones: JSON.parse(JSON.stringify(specialStones)),
+    fireStates: JSON.parse(JSON.stringify(fireStates)),
+    bannedOpponentMove: bannedOpponentMove ? { ...bannedOpponentMove } : null,
+    playerMagics: JSON.parse(JSON.stringify(playerMagics)),
+    cpuMagics: JSON.parse(JSON.stringify(cpuMagics)),
+    cpuSpecialDeck: JSON.parse(JSON.stringify(cpuSpecialDeck)),
+    playerUsedMagicIds: new Set(playerUsedMagicIds),
+    cpuUsedMagicIds: new Set(cpuUsedMagicIds),
+    playerMagicBlocked: playerMagicBlocked,
+    cpuMagicBlocked: cpuMagicBlocked,
+    cpuMagicRevealed: cpuMagicRevealed,
+    magicHistory: JSON.parse(JSON.stringify(magicHistory)),
+    cpuTimeLeft: cpuTimeLeft,
+    playerTimeLeft: playerTimeLeft
+  };
+}
+
+/**
+ * 「1手戻る」ボタンの活性・非活性および表示・非表示を最新状態に同期します。
+ */
+function updateUndoButtonUI() {
+  if (!undoBtn) return;
+  // CPU戦時のみ表示
+  const isCpuMode = (opponentType === 'cpu' && !window.isOnlineMode);
+  if (!isCpuMode || gameEnded) {
+    undoBtn.style.display = 'none';
+    return;
+  }
+  undoBtn.style.display = 'block';
+
+  // 活性判定：
+  // 1. undoSnapshot が存在する（戻れる直前の手がある）
+  // 2. 現在プレイヤーの手番である（currentTurn === playerColor）
+  // 3. CPUが思考中ではない（!isCPUThinking）
+  // 4. ゲームが終了していない（!gameEnded）
+  // 5. 魔法のターゲティング中ではない（!targetingState）
+  const canUndo = (undoSnapshot !== null && currentTurn === playerColor && !isCPUThinking && !gameEnded && !targetingState);
+  undoBtn.disabled = !canUndo;
+}
+
+/**
+ * CPU戦において直前の1手を巻き戻します（最大1手まで、連続使用不可）。
+ */
+function undoMove() {
+  if (!undoSnapshot || isCPUThinking || gameEnded || opponentType !== 'cpu' || window.isOnlineMode) return;
+  if (currentTurn !== playerColor) return;
+
+  const snapshot = undoSnapshot;
+  // 連続使用不可のため即座にクリア
+  undoSnapshot = null;
+  pendingUndoSnapshot = null;
+
+  // 保存状態の完全復元
+  board = JSON.parse(JSON.stringify(snapshot.board));
+  playerScores = { ...snapshot.playerScores };
+  currentTurn = snapshot.currentTurn;
+  currentMoveHistory = snapshot.currentMoveHistory;
+  lastPlacedMove = snapshot.lastPlacedMove ? { ...snapshot.lastPlacedMove } : null;
+  specialStones = JSON.parse(JSON.stringify(snapshot.specialStones));
+  fireStates = JSON.parse(JSON.stringify(snapshot.fireStates));
+  bannedOpponentMove = snapshot.bannedOpponentMove ? { ...snapshot.bannedOpponentMove } : null;
+  playerMagics = JSON.parse(JSON.stringify(snapshot.playerMagics));
+  cpuMagics = JSON.parse(JSON.stringify(snapshot.cpuMagics));
+  cpuSpecialDeck = JSON.parse(JSON.stringify(snapshot.cpuSpecialDeck));
+  playerUsedMagicIds = new Set(snapshot.playerUsedMagicIds);
+  cpuUsedMagicIds = new Set(snapshot.cpuUsedMagicIds);
+  playerMagicBlocked = snapshot.playerMagicBlocked;
+  cpuMagicBlocked = snapshot.cpuMagicBlocked;
+  cpuMagicRevealed = snapshot.cpuMagicRevealed;
+  magicHistory = JSON.parse(JSON.stringify(snapshot.magicHistory));
+  cpuTimeLeft = snapshot.cpuTimeLeft;
+  playerTimeLeft = snapshot.playerTimeLeft;
+
+  targetingState = null;
+  targetingCache = null;
+  activeMagicIndex = null;
+  activeMagicIsCpuDeck = false;
+  isCPUThinking = false;
+
+  // 盤面とUIの再描画
+  updateBoardDOM();
+  document.querySelectorAll('.disc').forEach(d => d.style.transform = '');
+  renderMagics();
+  updateTurnUI();
+  updateTimerDisplay();
+
+  playerScoreEl.textContent = playerScores[playerColor];
+  cpuScoreEl.textContent = playerScores[cpuColor];
+
+  // 有効手の再計算と表示
+  validMoves = getValidMoves(currentTurn);
+  document.querySelectorAll('.cell.valid-move').forEach(el => el.classList.remove('valid-move'));
+  document.querySelectorAll('.cell.banned-move').forEach(el => el.classList.remove('banned-move'));
+  if (bannedOpponentMove && currentTurn === bannedOpponentMove.player && validMoves.length > 1) {
+    validMoves = validMoves.filter(m => m.r !== bannedOpponentMove.r || m.c !== bannedOpponentMove.c);
+    const idx = bannedOpponentMove.r * COLS + bannedOpponentMove.c;
+    if (boardEl.children[idx]) boardEl.children[idx].classList.add('banned-move');
+  }
+  validMoves.forEach(m => {
+    const idx = m.r * COLS + m.c;
+    if (boardEl.children[idx]) boardEl.children[idx].classList.add('valid-move');
+  });
+
+  // ボタンを非活性化
+  updateUndoButtonUI();
+}
+
+/**
  * 毎ターンの始まりなど節目に実行され、勝敗の判定やターンの準備を行います。
  */
 function updateGameState() {
   if (gameEnded) return;
+
+  // CPU戦でプレイヤーの番に戻ってきた場合、保留中のスナップショットを有効化
+  if (opponentType === 'cpu' && !window.isOnlineMode && currentTurn === playerColor) {
+    if (pendingUndoSnapshot) {
+      undoSnapshot = pendingUndoSnapshot;
+      pendingUndoSnapshot = null;
+    }
+  }
 
   // アリサの発火で燃えた部分の残りターンをマイナス1。もう0になったらそこにある石は消滅(EMPTY)する
   fireStates.forEach(f => f.turns--);
@@ -1902,6 +2042,7 @@ function updateGameState() {
 
   // ヘッダーの点灯(UI)を切り替える
   updateTurnUI();
+  updateUndoButtonUI();
 
   // もしこのターン置ける場所がどこにもなかったら「パス」となる
   if (validMoves.length === 0) {
@@ -1913,6 +2054,7 @@ function updateGameState() {
       // 相手だけが置けるなら一方的な「パス」表示ダイアログを出す
       showPassMessage(currentTurn);
       isCPUThinking = true;
+      updateUndoButtonUI();
       setTimeout(() => {
         if (currentTurn === playerColor) { if (playerMagicBlocked > 0) playerMagicBlocked--; } else { if (cpuMagicBlocked > 0) cpuMagicBlocked--; }
         forcedOpponentMove = null;
@@ -1927,6 +2069,7 @@ function updateGameState() {
   // もしCPU対戦モードで且つCPUのターンなら、少しの間を開けて思考を開始させる
   if (opponentType === 'cpu' && currentTurn === cpuColor && !isCPUThinking) {
     isCPUThinking = true;
+    updateUndoButtonUI();
     setTimeout(makeCPUMove, 800 + Math.random() * 700);
   }
 }
@@ -2316,8 +2459,9 @@ function makeCPUMovePlacement() {
       });
     }
   }
-  executeMove(bestMove);
   isCPUThinking = false;
+  executeMove(bestMove);
+  updateUndoButtonUI();
 }
 
 /**
@@ -2425,7 +2569,9 @@ function executeCpuMagic(spell, index) {
     const closeHandler = () => {
       modal.style.display = 'none';
       btnClose.removeEventListener('click', closeHandler);
+      isCPUThinking = false;
       commitMagic(index, true, cb, spell.id === 7);
+      updateUndoButtonUI();
     };
     btnClose.addEventListener('click', closeHandler);
 
@@ -2448,6 +2594,7 @@ function showPassMessage(passedPlayer) {
 function surrenderGame() {
   if (gameEnded) return;
   gameEnded = true; isCPUThinking = false; surrenderBtn.style.display = 'none';
+  if (undoBtn) undoBtn.style.display = 'none';
   if (onlineGameTimer) { clearInterval(onlineGameTimer); onlineGameTimer = null; }
   finalPlayerScore.textContent = playerScores[playerColor]; finalCpuScore.textContent = playerScores[cpuColor];
   const fpLabel = document.getElementById('final-player-label');
@@ -2694,6 +2841,7 @@ window.handleRemoteMargoCopy = function(data) {
 window.handleRemoteSurrender = function() {
   if (gameEnded) return;
   gameEnded = true; isCPUThinking = false; surrenderBtn.style.display = 'none';
+  if (undoBtn) undoBtn.style.display = 'none';
   if (onlineGameTimer) { clearInterval(onlineGameTimer); onlineGameTimer = null; }
   finalPlayerScore.textContent = playerScores[playerColor]; finalCpuScore.textContent = playerScores[cpuColor];
   const fpLabel = document.getElementById('final-player-label');
@@ -2729,6 +2877,7 @@ window.handleRemoteSurrender = function() {
 function endGame() {
   if (gameEnded) return;
   gameEnded = true; surrenderBtn.style.display = 'none';
+  if (undoBtn) undoBtn.style.display = 'none';
   if (onlineGameTimer) { clearInterval(onlineGameTimer); onlineGameTimer = null; }
   const pScore = playerScores[playerColor]; const cScore = playerScores[cpuColor];
   finalPlayerScore.textContent = pScore; finalCpuScore.textContent = cScore;
@@ -2908,6 +3057,7 @@ if (btnStartMatching) {
   });
 }
 surrenderBtn.addEventListener('click', () => { if (!gameEnded) confirmSurrenderModal.style.display = 'flex'; });
+if (undoBtn) undoBtn.addEventListener('click', undoMove);
 restartBtn.addEventListener('click', () => {
   if (window.netFinishGame) window.netFinishGame();
   if (window.netCleanup) window.netCleanup(true);
@@ -2915,6 +3065,9 @@ restartBtn.addEventListener('click', () => {
   titleScreenModal.style.display = 'flex';
 
   window.isOnlineMode = false;
+  if (undoBtn) undoBtn.style.display = 'none';
+  undoSnapshot = null;
+  pendingUndoSnapshot = null;
   btnPlayBlack.disabled = false;
   btnPlayWhite.disabled = false;
   const pvpBtn = document.getElementById('btn-play-pvp');
@@ -3025,6 +3178,7 @@ function updateModeUI() {
     if (manosabaContainer) manosabaContainer.style.display = 'none';
     if (specialContainer) specialContainer.style.display = 'none';
   }
+  updateUndoButtonUI();
 }
 
 document.getElementsByName('opponent-type').forEach(radio => radio.addEventListener('change', updateModeUI));
