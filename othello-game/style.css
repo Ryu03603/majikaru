@@ -870,6 +870,15 @@ h1 {
     padding: 20px 14px;
   }
 
+  /* 相手カード長押し時は、タップしている手で隠れないようダイアログを画面中央に配置 */
+  #magic-view-modal.position-center {
+    align-items: center;
+  }
+
+  #magic-view-modal.position-center .modal-content {
+    margin: auto;
+  }
+
   .modal-content h2 {
     font-size: 1.8rem;
     margin-bottom: 14px;

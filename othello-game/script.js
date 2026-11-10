@@ -654,8 +654,9 @@ const MAGIC_IMAGES = {
 /**
  * 魔法の効果確認専用モーダルを表示します（スマホ長押し等）。
  * @param {object} magic - 魔法オブジェクト ({ spell: { id, name, desc } })
+ * @param {boolean} isOpponent - 相手側のカード（相手手札・相手山札）かどうか
  */
-function showMagicViewModal(magic) {
+function showMagicViewModal(magic, isOpponent = false) {
   if (!magic || !magic.spell) return;
   if (magicViewName) magicViewName.textContent = magic.spell.name;
   if (magicViewDesc) magicViewDesc.textContent = magic.spell.desc;
@@ -663,6 +664,11 @@ function showMagicViewModal(magic) {
     magicViewImg.src = MAGIC_IMAGES[magic.spell.id] || MAGIC_IMAGES[0];
   }
   if (magicViewModal) {
+    if (isOpponent) {
+      magicViewModal.classList.add('position-center');
+    } else {
+      magicViewModal.classList.remove('position-center');
+    }
     magicViewModal.style.display = 'flex';
   }
 }
@@ -672,6 +678,7 @@ if (magicViewModal) {
   const closeViewModal = () => {
     if (magicViewModal.style.display === 'flex') {
       magicViewModal.style.display = 'none';
+      magicViewModal.classList.remove('position-center');
     }
   };
   window.addEventListener('touchend', closeViewModal, { passive: true });
@@ -683,8 +690,9 @@ if (magicViewModal) {
  * カード要素にスマホ向けの長押し効果確認リスナーを付与します。
  * @param {HTMLElement} cardEl - カードのDOM要素
  * @param {function} getMagicFunc - 魔法オブジェクトを返す関数
+ * @param {boolean} isOpponent - 相手側のカードかどうか
  */
-function attachCardLongPress(cardEl, getMagicFunc) {
+function attachCardLongPress(cardEl, getMagicFunc, isOpponent = false) {
   let touchTimer = null;
   let startX = 0;
   let startY = 0;
@@ -701,7 +709,7 @@ function attachCardLongPress(cardEl, getMagicFunc) {
       isLongPress = true;
       const magic = getMagicFunc();
       if (magic) {
-        showMagicViewModal(magic);
+        showMagicViewModal(magic, isOpponent);
         if (window.navigator && window.navigator.vibrate) {
           try { window.navigator.vibrate(30); } catch (err) {}
         }
@@ -726,6 +734,7 @@ function attachCardLongPress(cardEl, getMagicFunc) {
     if (isLongPress) {
       if (magicViewModal) {
         magicViewModal.style.display = 'none';
+        magicViewModal.classList.remove('position-center');
       }
       setTimeout(() => {
         isLongPress = false;
@@ -761,8 +770,8 @@ const deckInfo = {
 };
 const pDeckStackEl = document.getElementById('player-deck-stack');
 const cDeckStackEl = document.getElementById('cpu-deck-stack');
-if (pDeckStackEl) attachCardLongPress(pDeckStackEl, () => deckInfo);
-if (cDeckStackEl) attachCardLongPress(cDeckStackEl, () => deckInfo);
+if (pDeckStackEl) attachCardLongPress(pDeckStackEl, () => deckInfo, false);
+if (cDeckStackEl) attachCardLongPress(cDeckStackEl, () => deckInfo, true);
 
 function renderMagics(animateFlipTarget = false) {
   if (!isManosabaMode) return;
@@ -792,7 +801,7 @@ function renderMagics(animateFlipTarget = false) {
     const tt = document.createElement('div'); tt.className = 'magic-tooltip'; tt.textContent = m.spell.desc;
     card.appendChild(tt);
     // 長押しタップで魔法効果を確認（スマホ対応）
-    attachCardLongPress(card, () => m);
+    attachCardLongPress(card, () => m, false);
 
     // カードを押したときの処理
     card.addEventListener('click', () => {
@@ -844,8 +853,8 @@ function renderMagics(animateFlipTarget = false) {
     if ((opponentType === 'pvp' && !window.isOnlineMode) || cpuMagicRevealed) {
       const tt = document.createElement('div'); tt.className = 'magic-tooltip'; tt.textContent = m.spell.desc;
       card.appendChild(tt);
-      // 長押しタップで魔法効果を確認（スマホ対応）
-      attachCardLongPress(card, () => m);
+      // 長押しタップで魔法効果を確認（スマホ対応・相手カードは中央表示）
+      attachCardLongPress(card, () => m, true);
     }
 
     // 2人プレイモードではクリックを許可する
