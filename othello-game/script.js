@@ -1,5 +1,5 @@
 /**
- * Othello +「まじかるモード」 総合コントローラー
+ * Othello +「まじかるモード」総合コントローラー
  * 通常のオセロ処理に加え、13種類の固有魔法の挙動、CPUの思考・魔法発動ロジック、
  * およびDOM（HTML要素）の更新と各種エフェクトのアニメーション制御を行います。
  */
@@ -13,10 +13,10 @@ const WHITE = 2; // 白石
 const ROWS = 8;  // 盤面の行数 (8x8のオセロ盤)
 const COLS = 8;  // 盤面の列数 (8x8のオセロ盤)
 
-// 石をひっくり返すための8方向の探索用座標配列 (縦移動量, 横移動量)
+// 石をひっくり返すための8方向の探索用座標差分 (縦移動量, 横移動量)
 const DIRECTIONS = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
 
-// ゲームに登場する全13種類の魔法リスト。
+// ゲームに登場する全13種類の魔法リスト
 // id: 内部判定用の固有番号
 // name: 魔法名
 // desc: ツールチップなどで表示される魔法の効果説明
@@ -31,10 +31,10 @@ const ALL_MAGICS = [
   { id: 7, name: "宝生マーゴ（モノマネ）", desc: "相手の未使用魔法を1つコピーして自分のカードとして上書きする（※コピーしたとき、ターンは消費されない）。", requiresTarget: false },
   { id: 8, name: "黒部ナノカ（幻視）", desc: "相手は3ターンの間、魔法を使用できなくなる。", requiresTarget: false },
   { id: 9, name: "紫藤アリサ（発火）", desc: "選択した石を発火させる。3ターン後にそこにある石は消滅する。", requiresTarget: 'cell' },
-  { id: 10, name: "橘シェリー（怪力）", desc: "現在配置されている全ての石の数を維持したままランダムなマスに置き直す。", requiresTarget: false },
+  { id: 10, name: "橘シェリー（怪力）", desc: "現在配置されているすべての石の数を維持したままランダムなマスに置き直す。", requiresTarget: false },
   { id: 11, name: "遠野ハンナ（浮遊）", desc: "盤面上の任意の石1つを、別の空いているマスへ移動させる。", requiresTarget: 'hanna_1' },
   { id: 12, name: "沢渡ココ（千里眼）", desc: "相手の伏せられている手札の魔法をすべて公開する。", requiresTarget: false },
-  { id: 13, name: "氷上メルル（治療）", desc: "盤面を2ターン前（相手が打つ前）の状態まで時を戻す。さらに、相手が直前に打っていたマスを封鎖する。", requiresTarget: false }
+  { id: 13, name: "氷上メルル（治療）", desc: "盤面を1ターン前（相手が打つ前）の状態まで時を戻す。さらに、相手が直前に打っていたマスを封鎖する。", requiresTarget: false }
 ];
 
 // ==========================================
@@ -102,7 +102,7 @@ const OPENING_BOOK = [
   "f5d6c5f4e3c6d3f6e6d7g4c4g5c3f7d2e7f2e2f3c1g3f1h4h5h3h2e8b4c2b3f8b5d1e1b6c7d8a6g6b8b2a1g2h1g1b1a4a5c8g8g7h8a7b7a3a2a8h7h6"  // 兎ローズ定石
 ];
 
-// 180度回転した定石（戦況が全く同じになるもの）を動的に生成して追加
+// 180度回転した定石（戦法が全く同じになるもの）を動的に生成して追加
 const rotatedBooks = OPENING_BOOK.map(book => {
   let rotated = "";
   for (let i = 0; i < book.length; i += 2) {
@@ -119,18 +119,18 @@ let currentMoveHistory = "";  // 現在の着手履歴（例: "f5d6"）
 
 // --- 基本のオセロゲーム用 ---
 let board = [];               // 盤面の状態（2次元配列）。EMPTY, BLACK, WHITEのいずれかが入る。
-let currentTurn = BLACK;      // 現在誰のターンか（初手は必ず黒）
+let currentTurn = BLACK;      // 現在誰のターンか（先手は必ず黒）
 let playerScores = { [BLACK]: 2, [WHITE]: 2 }; // 黒と白のそれぞれの石の数
 let isCPUThinking = false;    // CPUが思考中（プレイヤーの操作を無効にするフラグ）
 
 let playerLastActionableMagic = null; // マーゴが真似るために、プレイヤーが最後に発動した特定の対象魔法（4, 6, 11）を記録
 let gameEnded = false;        // ゲームが終了したかどうかのフラグ
 let validMoves = [];          // 現在のターンプレイヤーが石を置ける座標と、ひっくり返せる石の一覧
-let isManosabaMode = false;   // 「まじかるモード(魔法あり)」が選ばれているかどうか
+let isManosabaMode = false;   // 「まじかるモード（魔法あり）」が選ばれているかどうか
 let isSpecialMode = false;    // 「特殊モード」が選ばれているかどうか
 let specialOpponent = null;   // 特殊モードの相手
 let opponentType = 'cpu';     // 'cpu' または 'pvp'
-let cpuDifficulty = 2;        // CPUの強さ (1:弱い, 2:普通, 3:強い, 7:定石)
+let cpuDifficulty = 2;        // CPUの強さ (1:弱い 2:普通 3:強い 7:定石)
 
 function getCpuName() {
   if (isSpecialMode) {
@@ -161,7 +161,7 @@ let playerMagics = [];          // プレイヤーに手札として配られて
 let cpuMagics = [];             // CPUに手札として配られている5つの魔法オブジェクト配列
 let cpuSpecialDeck = [];        // 特殊モード用のCPUの控えデッキ（10枚や20枚から手札を引いた後の残り）
 
-// 魔法使用回数の変数は撤去（無制限化に伴う削除）
+// 魔法使用回数の変数は撤去（無制限化に伴い削除）
 
 // 「完全ゲーム中1回のみ」の制限を管理するためのグローバル使用済みIDリスト
 let playerUsedMagicIds = new Set();
@@ -564,7 +564,7 @@ function initGame(selectedPlayerColor) {
   createBoardDOM();  // 盤面のHTML(DOM)構造を生成
   saveHistoryState(); // メルル用に初期状態を記録
   updateBoardDOM();   // DOMに状態を同期して石を表示
-  updateGameState();  // 有効手などの判定を行い、ターンを開始数r
+  updateGameState();  // 有効手などの判定を行い、ターンを開始
 }
 
 function generateSpecialMagics(opType) {
@@ -616,7 +616,7 @@ function generateSpecialMagics(opType) {
  */
 function drawMagics(count, usedIdsSet) {
   const drawn = [];
-  // 使用済みのカードはプールから除外する
+  // 使用済みのカードをプールから除外する
   let available = [...ALL_MAGICS].filter(m => !(usedIdsSet && usedIdsSet.has(m.id)));
   // 2人プレイ(pvp)時および特殊モード時は、相手の魔法が公開情報のため「沢渡ココ(ID:12)」を除外する
   if ((opponentType === 'pvp' && !window.isOnlineMode) || isSpecialMode) { available = available.filter(m => m.id !== 12); }
@@ -667,16 +667,16 @@ function showMagicViewModal(magic) {
   }
 }
 
-// 閲覧モーダルの閉じるボタンおよび背景タップで閉じるリスナー登録
-if (btnCloseMagicView && magicViewModal) {
-  btnCloseMagicView.addEventListener('click', () => {
-    magicViewModal.style.display = 'none';
-  });
-  magicViewModal.addEventListener('click', (e) => {
-    if (e.target === magicViewModal) {
+// 閲覧モーダルの指離し自動クローズ（画面上のどこで指・マウスを離しても閉じる）
+if (magicViewModal) {
+  const closeViewModal = () => {
+    if (magicViewModal.style.display === 'flex') {
       magicViewModal.style.display = 'none';
     }
-  });
+  };
+  window.addEventListener('touchend', closeViewModal, { passive: true });
+  window.addEventListener('touchcancel', closeViewModal, { passive: true });
+  window.addEventListener('mouseup', closeViewModal, { passive: true });
 }
 
 /**
@@ -702,6 +702,9 @@ function attachCardLongPress(cardEl, getMagicFunc) {
       const magic = getMagicFunc();
       if (magic) {
         showMagicViewModal(magic);
+        if (window.navigator && window.navigator.vibrate) {
+          try { window.navigator.vibrate(30); } catch (err) {}
+        }
       }
     }, 450);
   }, { passive: true });
@@ -709,21 +712,29 @@ function attachCardLongPress(cardEl, getMagicFunc) {
   cardEl.addEventListener('touchmove', (e) => {
     if (!touchTimer) return;
     const touch = e.touches[0];
-    if (Math.abs(touch.clientX - startX) > 10 || Math.abs(touch.clientY - startY) > 10) {
+    if (!isLongPress && (Math.abs(touch.clientX - startX) > 10 || Math.abs(touch.clientY - startY) > 10)) {
       clearTimeout(touchTimer);
       touchTimer = null;
     }
   }, { passive: true });
 
-  const cancelTouch = () => {
+  const endHold = () => {
     if (touchTimer) {
       clearTimeout(touchTimer);
       touchTimer = null;
     }
+    if (isLongPress) {
+      if (magicViewModal) {
+        magicViewModal.style.display = 'none';
+      }
+      setTimeout(() => {
+        isLongPress = false;
+      }, 150);
+    }
   };
 
-  cardEl.addEventListener('touchend', cancelTouch);
-  cardEl.addEventListener('touchcancel', cancelTouch);
+  cardEl.addEventListener('touchend', endHold);
+  cardEl.addEventListener('touchcancel', endHold);
 
   // 長押し後の通常タップ（click）イベントをキャプチャフェーズでキャンセル
   cardEl.addEventListener('click', (e) => {
@@ -746,7 +757,7 @@ function renderMagics(animateFlipTarget = false) {
   // プレイヤー側の手札描画
   pMagicDeck.innerHTML = '';
   playerMagics.forEach((m, i) => {
-    // 実際に自分が消費した魔法が他にもないか（マーゴのコピー含む）照合
+    // 実際に自分が消費した魔法が他にもないか（マーゴのコピー含む）をチェック
     const checkId = m.spell.name.startsWith('宝生マーゴ→') ? 7 : m.spell.id;
     const isGlobal = playerUsedMagicIds.has(checkId);
 
@@ -764,7 +775,7 @@ function renderMagics(animateFlipTarget = false) {
     img.style.borderRadius = '8px';
     card.appendChild(img);
 
-    // ツールチップ(説明文ポップアップ)の追加
+    // ツールチップ（説明文ポップアップ）の追加
     const tt = document.createElement('div'); tt.className = 'magic-tooltip'; tt.textContent = m.spell.desc;
     card.appendChild(tt);
     // 長押しタップで魔法効果を確認（スマホ対応）
@@ -777,11 +788,11 @@ function renderMagics(animateFlipTarget = false) {
 
       // 相手から黒部ナノカの魔法で封鎖されている場合
       if (playerMagicBlocked > 0) {
-        showModalAlert(`現在、黒部ナノカの魔法でカードは使用できません。残り${playerMagicBlocked}ターン。`);
+        showModalAlert(`現在、黒部ナノカの魔法でカードの使用ができません。残り${playerMagicBlocked}ターン。`);
         return;
       }
 
-      // 魔法が使えないタイミング（相手ターン中、CPU思考中、ターゲッティング強制中など）は反応をブロック
+      // 魔法が使えないタイミング（相手ターン中、CPU思考中、ターゲティング強制中など）の反応をブロック
       if (isCPUThinking || currentTurn !== playerColor || targetingState) return;
       if (window.isOnlineMode && (currentTurn !== window.myOnlineColor || currentTurn !== playerColor)) return;
 
@@ -820,8 +831,8 @@ function renderMagics(animateFlipTarget = false) {
     if ((opponentType === 'pvp' && !window.isOnlineMode) || cpuMagicRevealed) {
       const tt = document.createElement('div'); tt.className = 'magic-tooltip'; tt.textContent = m.spell.desc;
       card.appendChild(tt);
-    // 長押しタップで魔法効果を確認（スマホ対応）
-    attachCardLongPress(card, () => m);
+      // 長押しタップで魔法効果を確認（スマホ対応）
+      attachCardLongPress(card, () => m);
     }
 
     // 2人プレイモードではクリックを許可する
@@ -832,7 +843,7 @@ function renderMagics(animateFlipTarget = false) {
 
         // プレイヤー2が黒部ナノカで封鎖されている場合
         if (cpuMagicBlocked > 0) {
-          showModalAlert(`現在、黒部ナノカの魔法でカードは使用できません。残り${cpuMagicBlocked}ターン。`);
+          showModalAlert(`現在、黒部ナノカの魔法でカードの使用ができません。残り${cpuMagicBlocked}ターン。`);
           return;
         }
 
@@ -1121,7 +1132,7 @@ btnConfirmMagic.addEventListener('click', () => {
   }
 
   if (magic.spell.requiresTarget) {
-    // もしその魔法が「対象を指定する必要がある魔法」なら、ターゲッティングモードに移行する
+    // もしその魔法が「対象を指定する必要がある魔法」なら、ターゲティングモードに移行する
     targetingState = magic.spell.requiresTarget;
     targetInfo.textContent = `${magic.spell.name}：` + getTargetingPromptText(targetingState);
     targetBar.style.display = 'block'; // 画面上部に操作指示バーを出す
@@ -1136,16 +1147,16 @@ btnConfirmMagic.addEventListener('click', () => {
       });
     }
   } else {
-    // ターゲッティングが不要な魔法なら、そのまま直ちに効果を実行（発動）する
+    // ターゲティングが不要な魔法なら、そのまま直ちに効果を実行（発動）する
     executeMagicLogic(magic.spell.id, isCpuMode, index);
   }
 });
 
 // 魔法ごとに要求される指示テキストを返す関数
 function getTargetingPromptText(state) {
-  if (state === 'valid_opponent') return "\u76F8\u624B\u304C\u7F6E\u3051\u308B\u30DE\u30B9\u30921\u3064\u6307\u5B9A\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
-  if (state === 'miria_1') return "\u5165\u308C\u66FF\u3048\u308B\u3010\u81EA\u5206\u306E\u77F3\u3011\u3092\u30AF\u30EA\u30C3\u30AF\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
-  if (state === 'hanna_1') return "\u79FB\u52D5\u3059\u308B\u3010\u76E4\u9762\u4E0A\u306E\u77F3\u3011\u3092\u30AF\u30EA\u30C3\u30AF\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
+  if (state === 'valid_opponent') return "相手が置けるマスを1つ指定してください。";
+  if (state === 'miria_1') return "入れ替える【自分の石】をクリックしてください。";
+  if (state === 'hanna_1') return "移動する【盤面上の石】をクリックしてください。";
   return "";
 }
 
@@ -1161,7 +1172,7 @@ function getTargetingPromptText(state) {
  */
 function commitMagic(index, casterIsCpu, logicCallback, isMargo = false) {
   const magic = casterIsCpu ? cpuMagics[index] : playerMagics[index];
-  const isMargoCopyAction = isMargo || (magic && magic.spell && magic.spell.id === 7 && !magic.spell.name.startsWith('\u5B9D\u751F\u30DE\u30FC\u30B4\u2192'));
+  const isMargoCopyAction = isMargo || (magic && magic.spell && magic.spell.id === 7 && !magic.spell.name.startsWith('宝生マーゴ→'));
 
   if (!casterIsCpu) {
     window.lastUsedSpellId = magic.spell.id;
@@ -1171,7 +1182,7 @@ function commitMagic(index, casterIsCpu, logicCallback, isMargo = false) {
 
   playMagicSound(magic.spell.id);
 
-  const trueId = magic.spell.name.startsWith('\u5B9D\u751F\u30DE\u30FC\u30B4\u2192') ? 7 : magic.spell.id;
+  const trueId = magic.spell.name.startsWith('宝生マーゴ→') ? 7 : magic.spell.id;
 
   if (!isMargoCopyAction) {
     if (casterIsCpu) {
@@ -1205,7 +1216,7 @@ function commitMagic(index, casterIsCpu, logicCallback, isMargo = false) {
       window.netSendAction({
         type: 'magic_margo_copy',
         spellId: window.lastUsedSpellId || 7,
-        spellName: window.lastUsedSpellName || "\u5B9D\u751F\u30DE\u30FC\u30B4(\u307E\u306D\u307E\u306D)",
+        spellName: window.lastUsedSpellName || "宝生マーゴ（モノマネ）",
         boardJson: JSON.stringify(board),
         fireStatesJson: JSON.stringify(fireStates),
         specialStonesJson: JSON.stringify(specialStones),
@@ -1289,7 +1300,7 @@ function endMagicTurn() {
 }
 
 /**
- * 非ターゲッティング魔法(RequiresTarget=false)の実際の効果を内包したコントローラーです（プレイヤー用）。
+ * 非ターゲティング魔法(requiresTarget=false)の実際の効果を内包したコントローラーです（プレイヤー用）。
  */
 function executeMagicLogic(magicId, casterIsCpu, index) {
   const isMargoCopyAction = (magicId === 7);
@@ -1339,7 +1350,7 @@ function executeMagicLogic(magicId, casterIsCpu, index) {
         });
         return 'async'; // 同期的な処理をスキップするフラグ
       }
-      // case 3, 4, 6, 9, 11 (アンアン、ノア、ミリア、アリサ、ハンナ等) は全て「対象選択モード」側で実行されるためここには来ない
+      // case 3, 4, 6, 9, 11 (アンアン、ノア、ミリア、アリサ、ハンナ等) は全て「対象選択モード」内で実行されるためここには来ない
       case 5: { // 蓮見レイア: 相手の手札の魔法1つをランダムで使用済み（使用不可）にする。
         const targetDeck = casterIsCpu ? playerMagics : cpuMagics;
         const targetGlobal = casterIsCpu ? playerUsedMagicIds : cpuUsedMagicIds;
@@ -1377,7 +1388,7 @@ function executeMagicLogic(magicId, casterIsCpu, index) {
         if (casterIsCpu) playerMagicBlocked = 3; else cpuMagicBlocked = 3;
         break;
       case 10: { // 橘シェリー: 石の総数を保持しつつ、完全にランダムな座標へ盤面ごと再配置する大技。
-        specialStones = Array(ROWS).fill().map(() => Array(COLS).fill(null)); // 特殊効果は初期化
+        specialStones = Array(ROWS).fill().map(() => Array(COLS).fill(null)); // 特殊効果の初期化
         let bs = 0, ws = 0; const coords = [];
         // 現在の石を回収
         for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
@@ -1434,10 +1445,10 @@ function executeMagicLogic(magicId, casterIsCpu, index) {
 }
 
 // ==========================================
-// 7. ターゲッティング（盤面クリックで対象を選ぶ）処理
+// 7. ターゲティング（盤面クリックで対象を選ぶ）処理
 // ==========================================
 /**
- * 魔法の対象を選択している「ターゲッティング状態」中のクリックされたマスの処理ロジックです。
+ * 魔法の対象を選択している「ターゲティング状態」中のクリックされたマスの処理ロジックです。
  */
 function handleTargetingClick(r, c) {
   const v = board[r][c]; // クリックした場所の石の状態
@@ -1451,10 +1462,10 @@ function handleTargetingClick(r, c) {
     forcedOpponentMove = { r, c };
 
     // 多重動作防止のため、魔法のインデックスをローカルに確保して全体を無効化する
-      const idx = activeMagicIndex;
+    const idx = activeMagicIndex;
     activeMagicIndex = null;
     targetingCache = null;
-      commitMagic(idx, activeMagicIsCpuDeck, null);
+    commitMagic(idx, activeMagicIsCpuDeck, null);
   }
   else if (targetingState === 'stone') { // 城ケ崎ノア
     // 石がある場所のみ許可し、その後に表示されるカラー選択の中間ダイアログを開く
@@ -1470,7 +1481,7 @@ function handleTargetingClick(r, c) {
     }
     colorSelectModal.style.display = 'flex';
   }
-  else if (targetingState === 'miria_1') { // 佐伯ミリア 第一選択
+  else if (targetingState === 'miria_1') { // 佐伯ミリア 第1選択
     // まず自分の石を選ぶ
     if (v !== myColor) { showModalAlert("自分の石を選択してください。"); return; }
     targetingCache = { r1: r, c1: c }; targetingState = 'miria_2';
@@ -1481,8 +1492,8 @@ function handleTargetingClick(r, c) {
     const disc = document.getElementById(`disc-${r}-${c}`);
     if (disc) disc.classList.add('swapped-stone-effect');
   }
-  else if (targetingState === 'miria_2') { // 佐伯ミリア 第二選択
-    // 相手の石を選んで、最終的に入れ替える
+  else if (targetingState === 'miria_2') { // 佐伯ミリア 第2選択
+    // 相手の石を選んで、最終気に入れ替える
     if (v !== opColor) { showModalAlert("相手の石を選択してください。"); return; }
 
     // 両方の石をスワップする
@@ -1497,21 +1508,21 @@ function handleTargetingClick(r, c) {
       playerLastActionableMagic = { id: 6, r1: targetingCache.r1, c1: targetingCache.c1, r2: r, c2: c };
     }
 
-      const idx = activeMagicIndex;
+    const idx = activeMagicIndex;
     activeMagicIndex = null;
     targetingCache = null;
-      commitMagic(idx, activeMagicIsCpuDeck, null);
+    commitMagic(idx, activeMagicIsCpuDeck, null);
   }
   else if (targetingState === 'cell') { // 紫藤アリサ
     if (v === EMPTY) { showModalAlert("石のある場所を選択してください。"); return; }
     if (fireStates.find(f => f.r === r && f.c === c)) { showModalAlert("既に発火している石です。別の石を選んでください。"); return; }
     applyFire(r, c);
-      const idx = activeMagicIndex;
+    const idx = activeMagicIndex;
     activeMagicIndex = null;
     targetingCache = null;
-      commitMagic(idx, activeMagicIsCpuDeck, null);
+    commitMagic(idx, activeMagicIsCpuDeck, null);
   }
-  else if (targetingState === 'hanna_1') { // 遠野ハンナ 第一選択
+  else if (targetingState === 'hanna_1') { // 遠野ハンナ 第1選択
     if (v === EMPTY) { showModalAlert("石を選択してください。"); return; }
     targetingCache = { r1: r, c1: c, col: v }; targetingState = 'hanna_2';
     targetInfo.textContent = "遠野ハンナ：移動先の空きマスを選択してください。";
@@ -1521,13 +1532,13 @@ function handleTargetingClick(r, c) {
     const disc = document.getElementById(`disc-${r}-${c}`);
     if (disc) disc.classList.add('moved-stone-effect');
   }
-  else if (targetingState === 'hanna_2') { // 遠野ハンナ 第二選択
+  else if (targetingState === 'hanna_2') { // 遠野ハンナ 第2選択
     if (v !== EMPTY) { showModalAlert("空きマスを選択してください。"); return; }
 
     board[r][c] = targetingCache.col; // 選んだ空きマスへ移動
     board[targetingCache.r1][targetingCache.c1] = EMPTY; // 元いた場所は消える
 
-    // 動いた先は青くし、元いた空きマスは点線のトレースを出す
+    // 動いた先は青くし、空いた空きマスは点線のトレースを出す
     specialStones[r][c] = 'moved';
     specialStones[targetingCache.r1][targetingCache.c1] = 'moved-from';
 
@@ -1535,19 +1546,19 @@ function handleTargetingClick(r, c) {
       playerLastActionableMagic = { id: 11, r1: targetingCache.r1, c1: targetingCache.c1, r2: r, c2: c, col: targetingCache.col };
     }
 
-      const idx = activeMagicIndex;
+    const idx = activeMagicIndex;
     activeMagicIndex = null;
     targetingCache = null;
-      commitMagic(idx, activeMagicIsCpuDeck, null);
+    commitMagic(idx, activeMagicIsCpuDeck, null);
   }
 }
 
-// 城ケ崎ノアにおけるカラー選択ダイアログの「黒にする」ボタンの処理
+// 城ケ崎ノアにおけるカラー選択確認ダイアログの「変更する」ボタンの処理
 const btnColorConfirm = document.getElementById('btn-color-confirm');
 if (btnColorConfirm) {
   btnColorConfirm.addEventListener('click', () => {
     if (activeMagicIndex === null || !targetingCache) return;
-  colorSelectModal.style.display = 'none';
+    colorSelectModal.style.display = 'none';
     const r = targetingCache.r;
     const c = targetingCache.c;
     const origColor = targetingCache.fromColor;
@@ -1561,8 +1572,7 @@ if (btnColorConfirm) {
     activeMagicIndex = null;
     targetingCache = null;
     commitMagic(idx, activeMagicIsCpuDeck, null);
-});
-
+  });
 }
 
 // 城ケ崎ノアにおけるカラー選択確認ダイアログの「キャンセル」ボタンの処理
@@ -1583,8 +1593,6 @@ if (colorSelectModal) {
     }
   });
 }
-
-
 
 /**
  * 紫藤アリサの着火魔法を適用し、指定したマスを3ターンの間「発火状態」にします。
@@ -1611,7 +1619,7 @@ function createBoardDOM() {
 }
 
 /**
- * JavaScript内の「board（二次元配列）」の情報を、ブラウザ（DOM全体）へ反映させます。
+ * JavaScript内部の「board（二次元配列）」の情報を、ブラウザ（DOM全体）へ反映させます。
  */
 function updateBoardDOM() {
   for (let r = 0; r < ROWS; r++) {
@@ -1637,7 +1645,7 @@ function updateBoardDOM() {
           disc = document.getElementById(`disc-${r}-${c}`);
         }
 
-        // 指定された色にクラスを付与(黒なら 'is-black', 白なら 'is-white')
+        // 指定された色にクラスを付与(黒なら'is-black', 白なら'is-white')
         if (disc) {
           disc.className = `disc ${val === WHITE ? 'is-white' : 'is-black'}`;
 
@@ -1660,11 +1668,11 @@ function updateBoardDOM() {
 function handleCellClick(r, c) {
   if (gameEnded) return; // 終わってるなら無効
 
-  // ターゲッティング選択中の場合は別ロジックへ
+  // ターゲティング選択中の場合は別ロジックへ
   if (targetingState) { handleTargetingClick(r, c); return; }
 
   // CPU操作時など、人間が触ってはいけないタイミングのブロック
-  // pvpモード時は currentTurn に関係なく(どちらの番でも) 人間のクリックを許可する
+  // pvpモード時は currentTurn に関わりなくどちらの番でも 人間のクリックを許可する
   if (isCPUThinking || (opponentType === 'cpu' && currentTurn !== playerColor)) return;
 
   // ネット対戦時、自分のターンでなければクリックをブロック
@@ -1724,7 +1732,7 @@ function executeMove(move) {
     bannedOpponentMove = null;
   }
 
-  // ハンナ・ノアなどで光り続けていたエフェクトは、ここで新しく石が「置かれた」と同時にすべてクリアして消灯する
+  // ハンナやノアなどで光り続けていたエフェクトは、ここで新しく石が「置かれた」と同時にすべてクリアして消灯する
   specialStones = Array(ROWS).fill().map(() => Array(COLS).fill(null));
 
   // 指定のマスを自分の色にする
@@ -1772,7 +1780,7 @@ function getValidMoves(player) {
       if (board[r][c] !== EMPTY) continue; // すでに石が置いてある場所には置けない
 
       const flips = [];
-      // 左上~右下までの全8方向へ飛んでいく
+      // 左上〜右下までの全8方向へ飛んでいく
       for (const [dr, dc] of DIRECTIONS) {
         let nr = r + dr; let nc = c + dc; const pFlips = [];
         // 相手の石が続く限り進む
@@ -1784,7 +1792,7 @@ function getValidMoves(player) {
           flips.push(...pFlips);
         }
       }
-      // もし1個でも挟めるなら、それは『有効手(置ける場所)』として配列に返す
+      // もし1個でも挟めるなら、それは「有効手(置ける場所)」として配列に返す
       if (flips.length > 0) moves.push({ r, c, flips });
     }
   }
@@ -1810,7 +1818,7 @@ function saveHistoryState() {
 function updateGameState() {
   if (gameEnded) return;
 
-  // アリサの発火で燃えた部分の残りターンをマイナス1。もし0になったらそこにある石は消滅(EMPTY)する
+  // アリサの発火で燃えた部分の残りターンをマイナス1。もう0になったらそこにある石は消滅(EMPTY)する
   fireStates.forEach(f => f.turns--);
   fireStates.forEach(f => { if (f.turns <= 0 && board[f.r][f.c] !== EMPTY) { board[f.r][f.c] = EMPTY; } });
   fireStates = fireStates.filter(f => f.turns > 0); // ターンが残っているものだけ残す
@@ -1868,7 +1876,7 @@ function updateGameState() {
   // ヘッダーの点灯(UI)を切り替える
   updateTurnUI();
 
-  // もしこのターン置ける場所がどこもなかったら「パス」となる
+  // もしこのターン置ける場所がどこにもなかったら「パス」となる
   if (validMoves.length === 0) {
     const op = currentTurn === BLACK ? WHITE : BLACK;
     if (getValidMoves(op).length === 0) {
@@ -1978,7 +1986,7 @@ function makeCPUMove() {
         }
         playerLastActionableMagic = null;
         commitMagic(counterIndex, true, null);
-        renderBoard();
+        updateBoardDOM();
         renderMagics('all');
         isCPUThinking = true;
         setTimeout(() => {
@@ -1991,7 +1999,7 @@ function makeCPUMove() {
     }
   }
 
-  // パーフェクト負け防止＆連続使用防止
+  // パーフェクト負け防止・連続使用防止
   let pStones = 0;
   let cStones = 0;
   for (let r = 0; r < ROWS; r++) {
@@ -2029,7 +2037,7 @@ function makeCPUMove() {
   if (isManosabaMode && cpuMagicBlocked <= 0 && !isEarlyGame && Math.random() < 0.25) {
     const avail = cpuMagics.map((m, i) => ({ ...m, i })).filter(m => {
       if (m.used) return false;
-      const checkId = m.spell.name.startsWith('宝生マーゴの') ? 7 : m.spell.id;
+      const checkId = m.spell.name.startsWith('宝生マーゴ→') ? 7 : m.spell.id;
       if (isSpecialMode) {
         if (isMargo && [4, 6, 11].includes(m.spell.id)) return false; 
         if (isSherryHanna && m.spell.id === 10) return false; // シェリーの魔法は除外
@@ -2217,41 +2225,7 @@ function makeCPUMovePlacement() {
           }
           window.Module._free(pointer);
         } else {
-          /*
-          // ゴクチョー(Lv15): 評価値によるランダム選択
-          let pointer_value = window.Module._malloc((64 + 10) * 4);
-          // 全合法手の評価値を取得（フリーズ防止のため探索深さは上限の7に固定）
-          window.Module._calc_value(pointer, pointer_value, 7, ai_player);
-          let output_array = new Int32Array(window.Module.HEAP32.buffer, pointer_value, 64 + 10);
-
-          let moveScores = [];
-          for (let m of validMoves) {
-            let score = output_array[10 + m.r * COLS + m.c];
-            if (score >= -64 && score <= 64) {
-              moveScores.push({ move: m, score: score });
-            }
-          }
-
-          window.Module._free(pointer);
-          window.Module._free(pointer_value);
-
-          if (moveScores.length > 0) {
-            // スコアが高い順（降順）にソート
-            moveScores.sort((a, b) => b.score - a.score);
-            // 評価値が0以上になる手を基本とし、唐突な悪手を防ぐ
-            // 次善手(5%)を選ぶ条件: 「最善手もマイナス(全手マイナス)である」または「次善手が0以上である」場合
-            let randIdx = 0;
-            if (moveScores.length >= 2) {
-              if ((moveScores[0].score < 0 || moveScores[1].score >= 0) && Math.random() < 0.05) {
-                randIdx = 1;
-              }
-            }
-            bestMove = moveScores[randIdx].move;
-          } else {
-            console.error("WASM calc_value returned no valid scores. Fallback to Lv7");
-            diff = 7;
-          }
-          */
+          // Lv15
         }
       } else {
         console.warn("WASM AI not loaded yet. Fallback to Lv7 logic.");
@@ -2414,7 +2388,7 @@ function executeCpuMagic(spell, index) {
 
     let extraDesc = "";
     if (spell.id === 1 && window.cpuDeletedCardName) {
-      extraDesc = `<br><span style="display:inline-block; margin-top:8px; font-size:1.05rem; color:#f87171;">消されたカード：「<strong style="color:#f87171; font-weight:bold;">${window.cpuDeletedCardName}</strong>」</span>`;
+      extraDesc = `<br><span style="display:inline-block; margin-top:8px; font-size:1.05rem; color:#f87171;">消されたカード：【<strong style="color:#f87171; font-weight:bold;">${window.cpuDeletedCardName}</strong>】</span>`;
       window.cpuDeletedCardName = null;
     }
     msgEl.innerHTML = `${getCpuName()} が 魔法「<strong>${spell.name}</strong>」を使用しました！${extraDesc}`;
@@ -2492,7 +2466,6 @@ function surrenderGame() {
   }
 }
 
-// 相手が投了した時のハンドラ
 // 相手が魔法を使用したときの同期ハンドラ
 window.handleRemoteMagic = function(data) {
   if (gameEnded) return;
@@ -2590,16 +2563,16 @@ window.handleRemoteMagic = function(data) {
     const opName = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "相手";
     let extraDesc = "";
     if (data.spellId === 1 && data.deletedCardName) {
-      extraDesc = `<br><span style="display:inline-block; margin-top:8px; font-size:1.05rem; color:#f87171;">消されたカード：「<strong style="color:#f87171; font-weight:bold;">${data.deletedCardName}</strong>」</span>`;
+      extraDesc = `<br><span style="display:inline-block; margin-top:8px; font-size:1.05rem; color:#f87171;">消されたカード：【<strong style="color:#f87171; font-weight:bold;">${data.deletedCardName}</strong>】</span>`;
     }
-    msgEl.innerHTML = `${opName} が 魔法「<strong>${data.spellName}</strong>」を使用しました！${extraDesc}`;
+    msgEl.innerHTML = `${opName} は魔法「<strong>${data.spellName}</strong>」を使用しました！${extraDesc}`;
     modal.style.display = 'flex';
 
     const closeHandler = () => {
       modal.style.display = 'none';
       btnClose.removeEventListener('click', closeHandler);
 
-      // 二階堂ヒロ(ID: 2)の場合はモーダル確認後に山札戻し→配りアニメーションを経てカードを更新
+      // 二階堂ヒロ(ID: 2)の場合、モーダル確認後に山札戻し→配りアニメーションを経てカードを更新
       if (isHiro) {
         isCPUThinking = true;
         returnMagicsToDeckAnimation(() => {
@@ -2639,7 +2612,7 @@ window.handleRemoteMagic = function(data) {
   }
 };
 
-// 相手がマーゴでカードをコピーした時の同期ハンドラ
+// 相手がマーゴでカードをコピーしたときの同期ハンドラ
 window.handleRemoteMargoCopy = function(data) {
   if (gameEnded) return;
   playMagicSound(data.spellId || 7);
@@ -2659,8 +2632,7 @@ window.handleRemoteMargoCopy = function(data) {
   }
   cpuUsedMagicIds.delete(7);
 
-  if (typeof data.timeLeft === 
-'number') {
+  if (typeof data.timeLeft === 'number') {
     cpuTimeLeft = data.timeLeft;
     updateTimerDisplay();
   }
@@ -2680,8 +2652,8 @@ window.handleRemoteMargoCopy = function(data) {
   const btnClose = document.getElementById('btn-close-cpu-magic');
 
   if (modal && msgEl && btnClose) {
-    const opName = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "\u76F8\u624B";
-    msgEl.textContent = `${opName} \u306F\u9B54\u6CD5\u300C${data.spellName || "\u5B9D\u751F\u30DE\u30FC\u30B4\uFF08\u30E2\u30CE\u30DE\u30CD\uFF09"}\u300D\u3092\u4F7F\u7528\u3057\u307E\u3057\u305F\uFF01`;
+    const opName = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "相手";
+    msgEl.textContent = `${opName} は魔法「${data.spellName || "宝生マーゴ（モノマネ）"}」を使用しました！`;
     modal.style.display = 'flex';
 
     const closeHandler = () => {
@@ -2808,7 +2780,7 @@ if (volumeSlider) {
     else volumeIcon.textContent = "🔊";
   });
 
-  // アイコンクリックでオン／オフの切り替え
+  // アイコンクリックでオン/オフの切り替え
   let lastVolume = 0.5;
   volumeIcon.addEventListener('click', () => {
     const currentVol = allSounds[0].volume;
@@ -2968,7 +2940,7 @@ function updateModeUI() {
   const opType = document.querySelector('input[name="opponent-type"]:checked')?.value || 'cpu';
   let mode = document.querySelector('input[name="game-mode"]:checked')?.value || 'normal';
 
-  // ネット対戦用設定と開始ボタンの表示切替
+  // ネット対戦用設定と開始ボタンの表示分岐
   if (onlineSettings) {
     onlineSettings.style.display = opType === 'online' ? 'block' : 'none';
     if (opType !== 'online' && window.isMatchingWaiting && window.netCancelMatching) { window.netCancelMatching(); }
@@ -3087,14 +3059,14 @@ document.querySelectorAll('input[name="opponent-type"]').forEach(radio => {
   });
 });
 
-
 // Ensure play buttons are not disabled on load
 if (typeof btnPlayBlack !== 'undefined' && btnPlayBlack) btnPlayBlack.disabled = false;
 if (typeof btnPlayWhite !== 'undefined' && btnPlayWhite) btnPlayWhite.disabled = false;
 const btnPlayPvpInit = document.getElementById('btn-play-pvp');
 if (btnPlayPvpInit) btnPlayPvpInit.disabled = false;
-  const pvpBtn = document.getElementById('btn-play-pvp');
-  if (pvpBtn) pvpBtn.disabled = false;
+const pvpBtn = document.getElementById('btn-play-pvp');
+if (pvpBtn) pvpBtn.disabled = false;
 
 // Global export of initGame
 window.initGame = initGame;
+
