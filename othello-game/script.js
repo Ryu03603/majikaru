@@ -1248,6 +1248,7 @@ function commitMagic(index, casterIsCpu, logicCallback, isMargo = false) {
         type: 'magic_margo_copy',
         spellId: window.lastUsedSpellId || 7,
         spellName: window.lastUsedSpellName || "宝生マーゴ（モノマネ）",
+        copiedCardName: window.lastCopiedCardName || null,
         boardJson: JSON.stringify(board),
         fireStatesJson: JSON.stringify(fireStates),
         specialStonesJson: JSON.stringify(specialStones),
@@ -1263,6 +1264,7 @@ function commitMagic(index, casterIsCpu, logicCallback, isMargo = false) {
         timeLeft: playerTimeLeft
       });
     }
+    window.lastCopiedCardName = null;
 
     renderMagics();
 
@@ -1305,6 +1307,7 @@ function endMagicTurn() {
       spellId: window.lastUsedSpellId || 0,
       spellName: window.lastUsedSpellName || "魔法",
       deletedCardName: window.lastDeletedCardName || null,
+      disabledCardName: window.lastDisabledCardName || null,
       boardJson: JSON.stringify(board),
       fireStatesJson: JSON.stringify(fireStates),
       specialStonesJson: JSON.stringify(specialStones),
@@ -1326,6 +1329,7 @@ function endMagicTurn() {
     });
   }
   window.lastDeletedCardName = null;
+  window.lastDisabledCardName = null;
   currentTurn = currentTurn === BLACK ? WHITE : BLACK;
   updateGameState(); // ボードの状態を評価して相手の処理へ
 }
@@ -1351,11 +1355,19 @@ function executeMagicLogic(magicId, casterIsCpu, index) {
           const deletedName = targetCard && targetCard.spell ? targetCard.spell.name : "魔法";
           targetDeck.splice(chosen.i, 1);
           window.lastDeletedCardName = deletedName;
-          if (!casterIsCpu && opponentType !== 'pvp') {
-            showModalAlert(`桜羽エマの魔法により、相手の魔法「<strong>${deletedName}</strong>」を消滅させました！`);
+
+          const isOpponentHandVisible = (opponentType === 'pvp' && !window.isOnlineMode) || cpuMagicRevealed;
+          let targetName = "相手";
+          if (window.isOnlineMode) {
+            targetName = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "相手";
           } else if (opponentType === 'pvp') {
-            const victimName = casterIsCpu ? "プレイヤー1" : "プレイヤー2";
-            showModalAlert(`桜羽エマの魔法により、${victimName}の魔法「<strong>${deletedName}</strong>」を消滅させました！`);
+            targetName = casterIsCpu ? "プレイヤー1" : "プレイヤー2";
+          }
+
+          if (isOpponentHandVisible) {
+            showModalAlert(`桜羽エマの魔法により、${targetName}の魔法「<strong>${deletedName}</strong>」を消滅させました！`);
+          } else {
+            showModalAlert(`桜羽エマの魔法により、${targetName}の魔法カードを1枚消滅させました！`);
           }
         }
         break;
@@ -1395,6 +1407,7 @@ function executeMagicLogic(magicId, casterIsCpu, index) {
           targetCard.used = true;
           // 再ドロー時にも復活しないよう完全に使用済みにする
           targetGlobal.add(targetCard.spell.id);
+          window.lastDisabledCardName = targetCard && targetCard.spell ? targetCard.spell.name : "魔法";
         }
         break;
       }
@@ -1410,6 +1423,7 @@ function executeMagicLogic(magicId, casterIsCpu, index) {
         if (u.length > 0) {
           const cp = u[Math.floor(Math.random() * u.length)].spell; // コピー元の実体をクローン
           myDeck[index].spell = { ...cp, name: `宝生マーゴ→${cp.name}` };
+          window.lastCopiedCardName = cp.name;
         } else {
           showModalAlert("コピーできる対象がいません。");
         }
@@ -1798,6 +1812,7 @@ function executeMove(move) {
   else { if (cpuMagicBlocked > 0) cpuMagicBlocked--; forcedOpponentMove = null; }
 
   window.lastDeletedCardName = null;
+  window.lastDisabledCardName = null;
   currentTurn = currentTurn === BLACK ? WHITE : BLACK;
   updateGameState();
 
@@ -2131,7 +2146,7 @@ function makeCPUMove() {
       const msgEl = document.getElementById('cpu-magic-message');
       const btnClose = document.getElementById('btn-close-cpu-magic');
 
-      msgEl.textContent = `${getCpuName()}が魔法「${magicName}」を使用しました！`;
+      msgEl.innerHTML = getRemoteMagicMessageHtml(getCpuName(), playerLastActionableMagic.id, magicName);
       modal.style.display = 'flex';
 
       const closeHandler = () => {
@@ -2465,6 +2480,77 @@ function makeCPUMovePlacement() {
 }
 
 /**
+ * 相手が魔法を使用した際に表示するモーダルメッセージHTMLを生成します。
+ */
+function getRemoteMagicMessageHtml(casterName, spellId, spellName, extraData = {}) {
+  const line1 = `${casterName} は魔法「<strong>${spellName}</strong>」を使用しました！`;
+  let line2 = "";
+  let extraBadge = "";
+
+  switch (spellId) {
+    case 1: // 桜羽エマ（魔女殺し）
+      line2 = "手札の魔法カードが1枚、物理的に打ち消されました。";
+      if (extraData.deletedCardName) {
+        extraBadge = `<br><span style="display:inline-block; margin-top:8px; font-size:1.05rem; color:#f87171;">消されたカード：【<strong style="color:#f87171; font-weight:bold;">${extraData.deletedCardName}</strong>】</span>`;
+      }
+      break;
+    case 2: // 二階堂ヒロ（死に戻り）
+      line2 = "お互いの手札の魔法を引き直します。";
+      break;
+    case 3: // 夏目アンアン（洗脳）
+      line2 = "次に石を置くマスを指定されました。";
+      break;
+    case 4: // 城ケ崎ノア（液体操作）
+      line2 = "指定された石の色が書き換わりました。";
+      break;
+    case 5: // 蓮見レイア（視線誘導）
+      line2 = "手札の魔法が1枚、使用不可にされました。";
+      if (extraData.disabledCardName) {
+        extraBadge = `<br><span style="display:inline-block; margin-top:8px; font-size:1.05rem; color:#f87171;">使用不可になったカード：【<strong style="color:#f87171; font-weight:bold;">${extraData.disabledCardName}</strong>】</span>`;
+      }
+      break;
+    case 6: // 佐伯ミリア（入れ替わり）
+      line2 = "指定された2つの石の場所が入れ替わりました。";
+      break;
+    case 7: // 宝生マーゴ（モノマネ）
+      line2 = "未使用の魔法を1つコピーされました。";
+      if (extraData.copiedCardName) {
+        extraBadge = `<br><span style="display:inline-block; margin-top:8px; font-size:1.05rem; color:#38bdf8;">コピーされたカード：【<strong style="color:#38bdf8; font-weight:bold;">${extraData.copiedCardName}</strong>】</span>`;
+      }
+      break;
+    case 8: // 黒部ナノカ（幻視）
+      line2 = "3ターンの間、魔法が使用できなくなりました。";
+      break;
+    case 9: // 紫藤アリサ（発火）
+      line2 = "指定された石が発火しました。3ターン後に消滅します。";
+      break;
+    case 10: // 橘シェリー（怪力）
+      line2 = "すべての石の数を維持したまま、ランダムなマスに置き直されました。";
+      break;
+    case 11: // 遠野ハンナ（浮遊）
+      line2 = "指定された石が別のマスへ移動しました。";
+      break;
+    case 12: // 沢渡ココ（千里眼）
+      line2 = "手札の魔法がすべて公開されました。";
+      break;
+    case 13: // 氷上メルル（治療）
+      line2 = "盤面が1ターン前に戻され、直前のマスが封鎖されました。";
+      break;
+    default:
+      break;
+  }
+
+  let html = line1;
+  if (line2) {
+    html += `<br><span style="display:inline-block; margin-top:8px; font-size:0.95rem; color:#cbd5e1;">${line2}</span>`;
+  }
+  if (extraBadge) {
+    html += extraBadge;
+  }
+  return html;
+}
+
+/**
  * CPUが選ばれた「魔法」を使用し、盤面にランダムに効果を適用させます。
  * (プレイヤーと違って画面のクリックを待つ必要がないので、自動で処理を追えます)
  */
@@ -2504,13 +2590,23 @@ function executeCpuMagic(spell, index) {
     }; break;
     case 3: { const pm = getValidMoves(playerColor); if (pm.length > 0) { cb = () => { forcedOpponentMove = pm[Math.floor(Math.random() * pm.length)]; }; } else { ok = false; } break; }
     case 4: { const s = getRandomStone(playerColor) || getRandomStone(cpuColor); if (s) { cb = () => { board[s.r][s.c] = Math.random() < 0.5 ? BLACK : WHITE; specialStones[s.r][s.c] = 'changed'; }; } else { ok = false; } break; }
-    case 5: { const u = playerMagics.filter(m => !m.used && !playerUsedMagicIds.has(m.spell.id)); if (u.length > 0) { cb = () => { u[Math.floor(Math.random() * u.length)].used = true; }; } else { ok = false; } break; }
+    case 5: {
+      const u = playerMagics.filter(m => !m.used && !playerUsedMagicIds.has(m.spell.id));
+      if (u.length > 0) {
+        const chosenCard = u[Math.floor(Math.random() * u.length)];
+        window.cpuDisabledCardName = chosenCard && chosenCard.spell ? chosenCard.spell.name : "魔法";
+        cb = () => { chosenCard.used = true; };
+      } else { ok = false; }
+      break;
+    }
     case 6: { const ms = getRandomStone(cpuColor); const os = getRandomStone(playerColor); if (ms && os) { cb = () => { board[ms.r][ms.c] = playerColor; board[os.r][os.c] = cpuColor; specialStones[ms.r][ms.c] = 'swapped'; specialStones[os.r][os.c] = 'swapped'; }; } else { ok = false; } break; }
     case 7: {
       const u = playerMagics.filter(m => !m.used && !playerUsedMagicIds.has(m.spell.id));
       if (u.length > 0) {
+        const chosenCard = u[Math.floor(Math.random() * u.length)];
+        const cp = chosenCard.spell;
+        window.cpuCopiedCardName = cp ? cp.name : "魔法";
         cb = () => {
-          const cp = u[Math.floor(Math.random() * u.length)].spell;
           cpuMagics[index].spell = { ...cp, name: `宝生マーゴ→${cp.name}` };
         };
       } else { ok = false; }
@@ -2557,12 +2653,15 @@ function executeCpuMagic(spell, index) {
     const msgEl = document.getElementById('cpu-magic-message');
     const btnClose = document.getElementById('btn-close-cpu-magic');
 
-    let extraDesc = "";
-    if (spell.id === 1 && window.cpuDeletedCardName) {
-      extraDesc = `<br><span style="display:inline-block; margin-top:8px; font-size:1.05rem; color:#f87171;">消されたカード：【<strong style="color:#f87171; font-weight:bold;">${window.cpuDeletedCardName}</strong>】</span>`;
-      window.cpuDeletedCardName = null;
-    }
-    msgEl.innerHTML = `${getCpuName()} が 魔法「<strong>${spell.name}</strong>」を使用しました！${extraDesc}`;
+    const isOpponentHandVisible = (opponentType === 'pvp' && !window.isOnlineMode) || cpuMagicRevealed;
+    msgEl.innerHTML = getRemoteMagicMessageHtml(getCpuName(), spell.id, spell.name, {
+      deletedCardName: window.cpuDeletedCardName,
+      disabledCardName: window.cpuDisabledCardName,
+      copiedCardName: isOpponentHandVisible ? window.cpuCopiedCardName : null
+    });
+    window.cpuDeletedCardName = null;
+    window.cpuDisabledCardName = null;
+    window.cpuCopiedCardName = null;
     modal.style.display = 'flex';
 
     // 一度だけクリックイベントをリッスンするための関数
@@ -2735,11 +2834,12 @@ window.handleRemoteMagic = function(data) {
 
   if (modal && msgEl && btnClose) {
     const opName = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "相手";
-    let extraDesc = "";
-    if (data.spellId === 1 && data.deletedCardName) {
-      extraDesc = `<br><span style="display:inline-block; margin-top:8px; font-size:1.05rem; color:#f87171;">消されたカード：【<strong style="color:#f87171; font-weight:bold;">${data.deletedCardName}</strong>】</span>`;
-    }
-    msgEl.innerHTML = `${opName} は魔法「<strong>${data.spellName}</strong>」を使用しました！${extraDesc}`;
+    const isOpponentHandVisible = (opponentType === 'pvp' && !window.isOnlineMode) || cpuMagicRevealed;
+    msgEl.innerHTML = getRemoteMagicMessageHtml(opName, data.spellId, data.spellName, {
+      deletedCardName: data.deletedCardName,
+      disabledCardName: data.disabledCardName,
+      copiedCardName: isOpponentHandVisible ? data.copiedCardName : null
+    });
     modal.style.display = 'flex';
 
     const closeHandler = () => {
@@ -2827,7 +2927,10 @@ window.handleRemoteMargoCopy = function(data) {
 
   if (modal && msgEl && btnClose) {
     const opName = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "相手";
-    msgEl.textContent = `${opName} は魔法「${data.spellName || "宝生マーゴ（モノマネ）"}」を使用しました！`;
+    const isOpponentHandVisible = (opponentType === 'pvp' && !window.isOnlineMode) || cpuMagicRevealed;
+    msgEl.innerHTML = getRemoteMagicMessageHtml(opName, 7, data.spellName || "宝生マーゴ（モノマネ）", {
+      copiedCardName: isOpponentHandVisible ? data.copiedCardName : null
+    });
     modal.style.display = 'flex';
 
     const closeHandler = () => {
