@@ -2540,7 +2540,11 @@ function getRemoteMagicMessageHtml(casterName, spellId, spellName, extraData = {
       line2 = "手札の魔法がすべて公開されました。";
       break;
     case 13: // 氷上メルル（治療）
-      line2 = "盤面が1ターン前に戻され、直前のマスが封鎖されました。";
+      if (extraData.merleRevertedStone) {
+        line2 = "盤面が1ターン前に戻され、直前のマスが封鎖されました。";
+      } else {
+        line2 = "直前の魔法効果が1手前に巻き戻されました。";
+      }
       break;
     default:
       break;
@@ -2635,17 +2639,20 @@ function executeCpuMagic(spell, index) {
     case 12: cb = () => { }; break; // ココ：プレイヤー側のカードを見てもCPUには関係ないので何もしない
     case 13: {
       if (magicHistory.length >= 2) {
+        const stateBeforeMyTurn = magicHistory[magicHistory.length - 1];
+        const opAction = stateBeforeMyTurn ? stateBeforeMyTurn.lastAction : null;
+        window.cpuMerleRevertedStone = !!(opAction && opAction.r !== undefined);
         cb = () => {
-          const stateBeforeMyTurn = magicHistory.pop();
-          const opAction = stateBeforeMyTurn.lastAction;
+          const st = magicHistory.pop();
+          const act = st.lastAction;
           const dest = magicHistory.pop();
           board = JSON.parse(JSON.stringify(dest.board));
           fireStates = JSON.parse(JSON.stringify(dest.fireStates));
           specialStones = JSON.parse(JSON.stringify(dest.specialStones));
           lastPlacedMove = dest.lastAction;
           currentMoveHistory = dest.moveSequence || "";
-          if (opAction && opAction.r !== undefined) {
-            bannedOpponentMove = { r: opAction.r, c: opAction.c, player: opAction.player };
+          if (act && act.r !== undefined) {
+            bannedOpponentMove = { r: act.r, c: act.c, player: act.player };
           }
         };
       } else { ok = false; }
@@ -2663,11 +2670,13 @@ function executeCpuMagic(spell, index) {
     msgEl.innerHTML = getRemoteMagicMessageHtml(getCpuName(), spell.id, spell.name, {
       deletedCardName: window.cpuDeletedCardName,
       disabledCardName: window.cpuDisabledCardName,
-      copiedCardName: isOpponentHandVisible ? window.cpuCopiedCardName : null
+      copiedCardName: isOpponentHandVisible ? window.cpuCopiedCardName : null,
+      merleRevertedStone: window.cpuMerleRevertedStone
     });
     window.cpuDeletedCardName = null;
     window.cpuDisabledCardName = null;
     window.cpuCopiedCardName = null;
+    window.cpuMerleRevertedStone = null;
     modal.style.display = 'flex';
 
     // 一度だけクリックイベントをリッスンするための関数
@@ -2841,10 +2850,12 @@ window.handleRemoteMagic = function(data) {
   if (modal && msgEl && btnClose) {
     const opName = window.formatDisplayName ? window.formatDisplayName(window.remotePlayerName) : "相手";
     const isOpponentHandVisible = (opponentType === 'pvp' && !window.isOnlineMode) || cpuMagicRevealed;
+    const isMerleRevertedStone = !!(data.bannedOpponentMove || bannedOpponentMove);
     msgEl.innerHTML = getRemoteMagicMessageHtml(opName, data.spellId, data.spellName, {
       deletedCardName: data.deletedCardName,
       disabledCardName: data.disabledCardName,
-      copiedCardName: isOpponentHandVisible ? data.copiedCardName : null
+      copiedCardName: isOpponentHandVisible ? data.copiedCardName : null,
+      merleRevertedStone: isMerleRevertedStone
     });
     modal.style.display = 'flex';
 
