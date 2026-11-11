@@ -1272,7 +1272,13 @@ function commitMagic(index, casterIsCpu, logicCallback, isMargo = false) {
       activeMagicIndex = null;
       targetBar.style.display = 'none';
       targetingState = null;
-      currentTurn = playerColor;
+      currentTurn = casterIsCpu ? cpuColor : playerColor;
+      validMoves = getValidMoves(currentTurn);
+      document.querySelectorAll('.cell.valid-move').forEach(el => el.classList.remove('valid-move'));
+      validMoves.forEach(m => {
+        const idx = m.r * COLS + m.c;
+        if (boardEl.children[idx]) boardEl.children[idx].classList.add('valid-move');
+      });
       updateBoardDOM();
       updateTurnUI();
     } else {
