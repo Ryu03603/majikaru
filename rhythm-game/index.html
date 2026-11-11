@@ -6,7 +6,7 @@
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Rhythmias</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=8">
     <link
         href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Noto+Sans+JP:wght@400;700&display=swap"
         rel="stylesheet">
@@ -79,6 +79,26 @@
             </label>
             <div id="selected-file-name">未選択</div>
 
+            <!-- ノーツスピード設定 & オプションボタン -->
+            <div class="quick-settings-bar">
+                <div class="speed-control-group">
+                    <span class="setting-label">SPEED</span>
+                    <button id="start-speed-down-btn" class="step-btn" title="Speed Down">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
+                    <span id="start-speed-value" class="setting-value">1.0</span>
+                    <button id="start-speed-up-btn" class="step-btn" title="Speed Up">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
+                </div>
+                <button id="open-option-btn" class="option-btn">⚙ OPTIONS</button>
+            </div>
+
             <!-- 一時的に難易度選択をコメントアウト
             <div class="difficulty-select">
                 <label><input type="radio" name="difficulty" value="normal" checked> NORMAL</label>
@@ -123,6 +143,23 @@
         <!-- ポーズ画面 -->
         <div id="pause-screen" class="hidden">
             <h2>PAUSE</h2>
+            <div class="speed-control" style="margin-bottom: 25px; display: flex; flex-direction: column; align-items: center;">
+                <label style="font-size: 1.2rem; color: #00eeff; margin-bottom: 10px; letter-spacing: 2px;">NOTE SPEED</label>
+                <div class="offset-buttons">
+                    <button id="pause-speed-down-btn" class="step-btn" title="Speed Down">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
+                    <span id="pause-speed-value" style="font-family: 'Orbitron', monospace; font-size: 2rem; font-weight: 700; color: #fff; min-width: 60px; text-align: center;">1.0</span>
+                    <button id="pause-speed-up-btn" class="step-btn" title="Speed Up">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
             <div class="volume-control">
                 <label for="volume-slider">VOLUME</label>
                 <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.25">
@@ -130,14 +167,86 @@
             <div class="offset-control">
                 <div class="label">JUDGMENT OFFSET</div>
                 <div class="offset-buttons">
-                    <button id="offset-down-btn">-</button>
+                    <button id="offset-down-btn" class="step-btn" title="Offset Down">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
                     <span id="offset-value">120</span>
-                    <button id="offset-up-btn">+</button>
+                    <button id="offset-up-btn" class="step-btn" title="Offset Up">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
                 </div>
                 <p style="font-size: 0.8rem; margin: 5px 0 0; color: #888;">※プレイ中も上下キー(↑/↓)で調整可能</p>
             </div>
             <button id="resume-btn">RESUME</button>
             <button id="title-btn" style="margin-top: 20px;">BACK TO TITLE</button>
+        </div>
+
+        <!-- オプション画面（モーダル） -->
+        <div id="option-screen" class="hidden">
+            <div class="option-modal-content">
+                <h2>OPTIONS</h2>
+                
+                <div class="option-row">
+                    <div class="option-label-group">
+                        <span class="option-title">NOTE SPEED</span>
+                        <span class="option-desc">ノーツの落下速度（高いほど譜面が伸び、低いほど縮みます）</span>
+                    </div>
+                    <div class="option-controls">
+                        <button id="opt-speed-down-btn" class="step-btn" title="Speed Down">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                        </button>
+                        <input type="range" id="opt-speed-slider" min="0.5" max="5.0" step="0.1" value="1.0" style="flex: 1;">
+                        <button id="opt-speed-up-btn" class="step-btn" title="Speed Up">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                        </button>
+                        <span id="opt-speed-display" class="setting-value">1.0</span>
+                    </div>
+                </div>
+
+                <div class="option-row">
+                    <div class="option-label-group">
+                        <span class="option-title">VOLUME</span>
+                        <span class="option-desc">BGMの音量</span>
+                    </div>
+                    <div class="option-controls">
+                        <input type="range" id="opt-volume-slider" min="0" max="1" step="0.01" value="0.25" style="flex: 1;">
+                        <span id="opt-volume-display" class="setting-value" style="font-size: 1.1rem;">25%</span>
+                    </div>
+                </div>
+
+                <div class="option-row">
+                    <div class="option-label-group">
+                        <span class="option-title">JUDGMENT OFFSET</span>
+                        <span class="option-desc">判定ラインの高さ（プレイ中も↑/↓キーで調整可能）</span>
+                    </div>
+                    <div class="option-controls" style="justify-content: center;">
+                        <button id="opt-offset-down-btn" class="step-btn" title="Offset Down">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                        </button>
+                        <span id="opt-offset-value" class="setting-value">120</span>
+                        <button id="opt-offset-up-btn" class="step-btn" title="Offset Up">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <button id="close-option-btn" style="margin-top: 15px; padding: 12px 40px; background: #3b82f6;">CLOSE</button>
+            </div>
         </div>
 
         <!-- 譜面作成エディタ画面 -->
@@ -222,7 +331,7 @@
 
     <audio id="bgm"></audio>
 
-    <script src="script.js?v=4"></script>
+    <script src="script.js?v=8"></script>
 </body>
 
 </html>

@@ -26,6 +26,28 @@ const selectedFileName = document.getElementById('selected-file-name');
 const selectScoresBtn = document.getElementById('select-scores-btn');
 const createMapBtn = document.getElementById('create-map-btn');
 
+// Settings & Option DOM Elements
+const startSpeedDownBtn = document.getElementById('start-speed-down-btn');
+const startSpeedUpBtn = document.getElementById('start-speed-up-btn');
+const startSpeedValueEl = document.getElementById('start-speed-value');
+const openOptionBtn = document.getElementById('open-option-btn');
+
+const optionScreen = document.getElementById('option-screen');
+const closeOptionBtn = document.getElementById('close-option-btn');
+const optSpeedDownBtn = document.getElementById('opt-speed-down-btn');
+const optSpeedUpBtn = document.getElementById('opt-speed-up-btn');
+const optSpeedSlider = document.getElementById('opt-speed-slider');
+const optSpeedDisplay = document.getElementById('opt-speed-display');
+const optVolumeSlider = document.getElementById('opt-volume-slider');
+const optVolumeDisplay = document.getElementById('opt-volume-display');
+const optOffsetDownBtn = document.getElementById('opt-offset-down-btn');
+const optOffsetUpBtn = document.getElementById('opt-offset-up-btn');
+const optOffsetValueEl = document.getElementById('opt-offset-value');
+
+const pauseSpeedDownBtn = document.getElementById('pause-speed-down-btn');
+const pauseSpeedUpBtn = document.getElementById('pause-speed-up-btn');
+const pauseSpeedValueEl = document.getElementById('pause-speed-value');
+
 // Editor DOM Elements
 const editorScreen = document.getElementById('editor-screen');
 const editorPlayBtn = document.getElementById('editor-play-btn');
@@ -50,43 +72,92 @@ const offsetValueEl = document.getElementById('offset-value');
 const offsetUpBtn = document.getElementById('offset-up-btn');
 const offsetDownBtn = document.getElementById('offset-down-btn');
 
-// 初期音量設定
-bgm.volume = 0.25;
-
-// Game Constants
+// Game Constants & Settings
 let KEY_MAP = { 'd': 0, 'D': 0, 'f': 1, 'F': 1, 'j': 2, 'J': 2, 'k': 3, 'K': 3 };
-let NOTE_SPEED = 1500; // ノーツが画面上部から判定ラインに到達するまでの時間(ms)
+const BASE_NOTE_SPEED = 1500; // 基準到達時間(ms)
+let noteSpeed = 1.0;
+const savedSpeed = localStorage.getItem('rhythmias_note_speed');
+if (savedSpeed !== null && !isNaN(parseFloat(savedSpeed))) {
+    noteSpeed = Math.round(Math.max(0.5, Math.min(5.0, parseFloat(savedSpeed))) * 10) / 10;
+}
+let NOTE_SPEED = BASE_NOTE_SPEED / (noteSpeed || 1.0);
 const FPS = 60;
-let judgmentOffset = 120; // 判定ラインの高さ(px)
 
-// 判定ウィンドウ (ms)
-const WINDOW_PERFECT = 60;
-const WINDOW_GREAT = 120;
-const WINDOW_MISS = 200;
+// 判定幅 (ミリ秒)
+const WINDOW_PERFECT = 60; // ±60ms
+const WINDOW_GREAT = 120;  // ±120ms
+const WINDOW_MISS = 180;   // ±180ms
 
-// スコア設定
-const SCORE_PERFECT = 200;
-const SCORE_GREAT = 100;
+// スコア計算用
+const SCORE_PERFECT = 1000;
+const SCORE_GREAT = 500;
 
-// Game State
-let isPlaying = false;
-let isPaused = false;
+// ゲーム状態管理変数
 let score = 0;
 let combo = 0;
 let maxCombo = 0;
 let stats = { perfect: 0, great: 0, miss: 0 };
-let startTime = 0;
-let animationId;
-
-// 譜面データ (time: 押すタイミング(ms), lane: レーン(0~3))
-let beatmap = [];
-let activeNotes = [];
 let noteIndex = 0;
-let globalBPM = 120; // 検出されたBPMを保持するグローバル変数
+let activeNotes = [];
+let beatmap = [];
+let isPlaying = false;
+let isPaused = false;
+let startTime = 0;
+let animationId = null;
+let globalBPM = 120;
+
+let judgmentOffset = 120; // 判定ラインの高さ(px)
+const savedOffset = localStorage.getItem('rhythmias_judgment_offset');
+if (savedOffset !== null && !isNaN(parseInt(savedOffset))) {
+    judgmentOffset = Math.max(0, Math.min(400, parseInt(savedOffset)));
+}
+
+const savedVolume = localStorage.getItem('rhythmias_volume');
+if (savedVolume !== null && !isNaN(parseFloat(savedVolume))) {
+    bgm.volume = Math.max(0, Math.min(1, parseFloat(savedVolume)));
+} else {
+    bgm.volume = 0.25;
+}
+
+// 設定変更用の統一関数
+function updateNoteSpeed(val) {
+    const num = parseFloat(val);
+    noteSpeed = isNaN(num) ? 1.0 : Math.round(Math.max(0.5, Math.min(5.0, num)) * 10) / 10;
+    NOTE_SPEED = BASE_NOTE_SPEED / noteSpeed;
+    localStorage.setItem('rhythmias_note_speed', noteSpeed.toFixed(1));
+
+    const formatted = noteSpeed.toFixed(1);
+    if (startSpeedValueEl) startSpeedValueEl.textContent = formatted;
+    if (optSpeedDisplay) optSpeedDisplay.textContent = formatted;
+    if (optSpeedSlider) optSpeedSlider.value = formatted;
+    if (pauseSpeedValueEl) pauseSpeedValueEl.textContent = formatted;
+}
+
+function updateVolume(val) {
+    const vol = Math.max(0, Math.min(1, parseFloat(val)));
+    bgm.volume = vol;
+    localStorage.setItem('rhythmias_volume', vol.toString());
+    if (volumeSlider) volumeSlider.value = vol;
+    if (optVolumeSlider) optVolumeSlider.value = vol;
+    if (optVolumeDisplay) optVolumeDisplay.textContent = `${Math.round(vol * 100)}%`;
+}
+
+function updateJudgmentOffset(val) {
+    judgmentOffset = Math.max(0, Math.min(400, val));
+    localStorage.setItem('rhythmias_judgment_offset', judgmentOffset.toString());
+    if (offsetValueEl) offsetValueEl.textContent = judgmentOffset;
+    if (optOffsetValueEl) optOffsetValueEl.textContent = judgmentOffset;
+
+    const jl = document.getElementById('judgment-line');
+    if (jl) jl.style.bottom = `${judgmentOffset}px`;
+    document.querySelectorAll('.hit-zone').forEach(hz => {
+        hz.style.bottom = `${judgmentOffset}px`;
+    });
+}
 
 // 音量調整
 volumeSlider.addEventListener('input', (e) => {
-    bgm.volume = e.target.value;
+    updateVolume(e.target.value);
 });
 
 let currentDifficulty = 'normal';
@@ -122,11 +193,11 @@ difficultyRadios.forEach(radio => {
     radio.addEventListener('change', async (e) => {
         currentDifficulty = e.target.value;
         if (currentDifficulty === 'hard') {
-            NOTE_SPEED = 900; // ハードは落下スピードを速くする
+            NOTE_SPEED = 900 / noteSpeed;
         } else if (currentDifficulty === 'test') {
-            NOTE_SPEED = 2000; // テスト用は確認しやすくゆっくりにする
+            NOTE_SPEED = 2000 / noteSpeed;
         } else {
-            NOTE_SPEED = 1500;
+            NOTE_SPEED = BASE_NOTE_SPEED / noteSpeed;
         }
 
         if (audioAnalysisDone) {
@@ -607,103 +678,129 @@ function endGame() {
     resultScreen.classList.remove('hidden');
 }
 
+// 現在のゲーム進行時間を安全に取得する（BGM未再生・遅延時もフォールバック）
+function getCurrentGameTime() {
+    let currentTime = performance.now() - startTime;
+    if (bgm.readyState >= 2 && !bgm.paused && bgm.currentTime > 0) {
+        currentTime = bgm.currentTime * 1000;
+    }
+    return currentTime;
+}
+
 // メインループ
 function gameLoop() {
     if (!isPlaying || isPaused) return;
 
-    // bgm.currentTimeを使って時間を同期（ミリ秒に変換）
-    // オーディオがまだロードされていない場合は performance.now() をフォールバックに使用
-    const currentTime = bgm.readyState >= 2 ? bgm.currentTime * 1000 : performance.now() - startTime;
+    try {
+        const currentTime = getCurrentGameTime();
 
-    // プログレスバーと残り時間の更新
-    if (bgm.duration) {
-        const progressPercent = (bgm.currentTime / bgm.duration) * 100;
-        document.getElementById('progress-bar').style.width = `${progressPercent}%`;
+        // プログレスバーと残り時間の更新
+        if (bgm.duration) {
+            const currentBgmTime = (bgm.readyState >= 2 && !bgm.paused && bgm.currentTime > 0) ? bgm.currentTime : (currentTime / 1000);
+            const progressPercent = Math.min(100, (currentBgmTime / bgm.duration) * 100);
+            document.getElementById('progress-bar').style.width = `${progressPercent}%`;
 
-        const remainingSeconds = Math.max(0, Math.ceil(bgm.duration - bgm.currentTime));
-        const m = Math.floor(remainingSeconds / 60);
-        const s = remainingSeconds % 60;
-        document.getElementById('time-remaining').textContent = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-    }
-
-    // ノーツの生成 (画面に現れるタイミング = 判定時間 - NOTE_SPEED)
-    while (noteIndex < beatmap.length) {
-        const note = beatmap[noteIndex];
-        const spawnTime = note.time - NOTE_SPEED;
-
-        if (currentTime >= spawnTime) {
-            spawnNoteElement(note);
-            activeNotes.push(note);
-            noteIndex++;
-        } else {
-            break;
+            const remainingSeconds = Math.max(0, Math.ceil(bgm.duration - currentBgmTime));
+            const m = Math.floor(remainingSeconds / 60);
+            const s = remainingSeconds % 60;
+            document.getElementById('time-remaining').textContent = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         }
-    }
 
-    // 画面の高さと判定ラインの位置を取得
-    const playAreaHeight = playArea.clientHeight;
-    const judgmentLineY = playAreaHeight - judgmentOffset;
+        // ノーツの生成 (画面に現れるタイミング = 判定時間 - NOTE_SPEED)
+        while (noteIndex < beatmap.length) {
+            const note = beatmap[noteIndex];
+            const spawnTime = note.time - NOTE_SPEED;
 
-    // ノーツの位置更新とMISS判定
-    for (let i = activeNotes.length - 1; i >= 0; i--) {
-        const note = activeNotes[i];
-        // 進行度を計算
-        // currentY はノーツの「下端」の位置を表すようにCSSが変更されている（bottom: 100%）
-        const progress = (currentTime - (note.time - NOTE_SPEED)) / NOTE_SPEED;
-        const currentY = progress * judgmentLineY;
+            if (currentTime >= spawnTime) {
+                spawnNoteElement(note);
+                activeNotes.push(note);
+                noteIndex++;
+            } else {
+                break;
+            }
+        }
 
-        if (note.element) {
-            note.element.style.transform = `translateY(${currentY}px)`;
+        // 画面の高さと判定ラインの位置を取得（安全ガード付き）
+        const playAreaHeight = playArea.clientHeight || window.innerHeight;
+        const judgmentLineY = Math.max(100, playAreaHeight - judgmentOffset);
+
+        // ノーツの位置更新とMISS判定
+        for (let i = activeNotes.length - 1; i >= 0; i--) {
+            const note = activeNotes[i];
+            // 進行度を計算
+            // currentY はノーツの「下端」の位置を表すようにCSSが変更されている（bottom: 100%）
+            const progress = (currentTime - (note.time - NOTE_SPEED)) / NOTE_SPEED;
+            const currentY = progress * judgmentLineY;
+
+            let holdHeight = 30;
             if (note.type === 'hold') {
-                note.element.style.height = `${(note.duration / NOTE_SPEED) * judgmentLineY}px`;
+                const calculatedHoldHeight = (note.duration / NOTE_SPEED) * judgmentLineY;
+                // 単押しノーツ(30px)と確実に区別できるよう、最低高さを45px担保する
+                holdHeight = Math.max(45, calculatedHoldHeight);
             }
-        }
 
-        // 画面外（判定ラインのはるか下）に出たら完全削除
-        const noteHeight = note.type === 'hold' ? (note.duration / NOTE_SPEED) * judgmentLineY : 30;
-        const noteTopY = currentY - noteHeight;
-
-        if (noteTopY > playAreaHeight + 50) { // 余裕をもたせて画面外で消す
-            if (note.element && note.element.parentNode) {
-                note.element.parentNode.removeChild(note.element);
+            if (note.element) {
+                note.element.style.transform = `translateY(${currentY}px)`;
+                if (note.type === 'hold') {
+                    note.element.style.height = `${holdHeight}px`;
+                }
             }
-            activeNotes.splice(i, 1);
-            continue;
-        }
 
-        // 処理済み（ヒットまたはミス）の場合は判定を行わず落下だけさせる
-        if (note.handled) {
-            continue;
-        }
+            // 画面外（判定ラインのはるか下）に出たら完全削除
+            const noteTopY = currentY - holdHeight;
 
-        // MISS判定とホールド判定
-        if (note.type === 'tap') {
-            if (currentTime > note.time + WINDOW_MISS) {
-                registerHit('miss', note, note.lane);
-                note.handled = true;
-                if (note.element) note.element.style.opacity = '0.5'; // 見逃したノーツは半透明に
+            if (noteTopY > playAreaHeight + 50) { // 余裕をもたせて画面外で消す
+                if (note.element && note.element.parentNode) {
+                    note.element.parentNode.removeChild(note.element);
+                }
+                activeNotes.splice(i, 1);
+                continue;
             }
-        } else if (note.type === 'hold') {
-            if (!note.isHolding && currentTime > note.time + WINDOW_MISS) {
-                // 開始を見逃した
-                registerHit('miss', note, note.lane);
-                note.handled = true;
-                if (note.element) note.element.style.opacity = '0.5';
-            } else if (note.isHolding) {
-                // ホールド中のエフェクト（間引いて表示）
-                if (Math.random() > 0.5) createHitEffect(note.lane);
 
-                // 終了時間を過ぎても押し続けている場合はパーフェクト扱いにする
-                if (currentTime > note.time + note.duration + WINDOW_PERFECT) {
-                    note.isHoldingCompleted = true;
-                    registerHit('perfect', note, note.lane);
-                    delete activeHolds[note.lane];
+            // 処理済みかつ画面から消去済みのノーツは即座に配列から解放
+            if (note.handled && (!note.element || !note.element.parentNode)) {
+                activeNotes.splice(i, 1);
+                continue;
+            }
+
+            // 処理済み（ミスで見逃したノーツ等）の場合は判定を行わず落下だけさせる
+            if (note.handled) {
+                continue;
+            }
+
+            // MISS判定とホールド判定
+            if (note.type === 'tap') {
+                if (currentTime > note.time + WINDOW_MISS) {
+                    registerHit('miss', note, note.lane);
+                    note.handled = true;
+                    if (note.element) note.element.style.opacity = '0.5'; // 見逃したノーツは半透明に
+                }
+            } else if (note.type === 'hold') {
+                if (!note.isHolding && currentTime > note.time + WINDOW_MISS) {
+                    // 開始を見逃した
+                    registerHit('miss', note, note.lane);
+                    note.handled = true;
+                    if (note.element) note.element.style.opacity = '0.5';
+                } else if (note.isHolding) {
+                    // ホールド中のエフェクト（間引いて表示）
+                    if (Math.random() > 0.5) createHitEffect(note.lane);
+
+                    // 終了時間を過ぎても押し続けている場合はパーフェクト扱いにする
+                    if (currentTime > note.time + note.duration + WINDOW_PERFECT) {
+                        note.isHoldingCompleted = true;
+                        registerHit('perfect', note, note.lane);
+                        delete activeHolds[note.lane];
+                    }
                 }
             }
         }
+    } catch (err) {
+        console.error("gameLoop error:", err);
     }
 
-    animationId = requestAnimationFrame(gameLoop);
+    if (isPlaying && !isPaused) {
+        animationId = requestAnimationFrame(gameLoop);
+    }
 }
 
 // ノーツのDOM要素を生成
@@ -726,6 +823,12 @@ window.addEventListener('keydown', (e) => {
     }
 
     if (!isPlaying || isPaused) return;
+
+    // 自動再生ブロックや保留時のリカバリ
+    if (bgm.paused) {
+        bgm.play().catch(err => console.warn("BGM再生リカバリ:", err));
+    }
+
     if (e.repeat) return; // 押しっぱなし防止
 
     const lane = KEY_MAP[e.key];
@@ -746,7 +849,7 @@ window.addEventListener('keyup', (e) => {
         // ホールドノーツの終了判定
         if (activeHolds[lane]) {
             const note = activeHolds[lane];
-            const currentTime = bgm.readyState >= 2 ? bgm.currentTime * 1000 : performance.now() - startTime;
+            const currentTime = getCurrentGameTime();
             const endTime = note.time + note.duration;
             const timeDiff = Math.abs(endTime - currentTime);
 
@@ -772,6 +875,11 @@ lanes.forEach((laneEl, index) => {
         e.preventDefault(); 
         if (!isPlaying || isPaused) return;
 
+        // 自動再生ブロックや保留時のリカバリ
+        if (bgm.paused) {
+            bgm.play().catch(err => console.warn("BGM再生リカバリ:", err));
+        }
+
         lanes[index].classList.add('active');
         checkHit(index);
     }, { passive: false });
@@ -782,7 +890,7 @@ lanes.forEach((laneEl, index) => {
 
         if (activeHolds[index]) {
             const note = activeHolds[index];
-            const currentTime = bgm.readyState >= 2 ? bgm.currentTime * 1000 : performance.now() - startTime;
+            const currentTime = getCurrentGameTime();
             const endTime = note.time + note.duration;
             const timeDiff = Math.abs(endTime - currentTime);
 
@@ -806,7 +914,7 @@ lanes.forEach((laneEl, index) => {
 
 // 判定処理
 function checkHit(lane) {
-    const currentTime = bgm.readyState >= 2 ? bgm.currentTime * 1000 : performance.now() - startTime;
+    const currentTime = getCurrentGameTime();
 
     // そのレーンでまだ処理されていないノーツを探す
     let targetNote = null;
@@ -952,7 +1060,8 @@ function togglePause() {
     if (isPaused) {
         isPaused = false;
         pauseScreen.classList.add('hidden');
-        bgm.play();
+        startTime = performance.now() - (bgm.currentTime * 1000);
+        bgm.play().catch(e => console.warn(e));
         animationId = requestAnimationFrame(gameLoop);
     } else {
         isPaused = true;
@@ -975,21 +1084,63 @@ titleBtn.addEventListener('click', () => {
 // UI上のポーズボタン
 document.getElementById('pause-btn-ui').addEventListener('click', togglePause);
 
-// 判定バー高さ（オフセット）の調整機能
-function updateJudgmentOffset(val) {
-    // 0px(一番下)から 400px(画面中央付近)の範囲に制限
-    judgmentOffset = Math.max(0, Math.min(400, val));
-    offsetValueEl.textContent = judgmentOffset;
-
-    // CSSを動的に更新
-    document.getElementById('judgment-line').style.bottom = `${judgmentOffset}px`;
-    document.querySelectorAll('.hit-zone').forEach(hz => {
-        hz.style.bottom = `${judgmentOffset}px`;
+// --- オプション・設定用イベントリスナー ---
+// スタート画面のスピード調整
+if (startSpeedDownBtn) {
+    startSpeedDownBtn.addEventListener('click', () => updateNoteSpeed(noteSpeed - 0.1));
+}
+if (startSpeedUpBtn) {
+    startSpeedUpBtn.addEventListener('click', () => updateNoteSpeed(noteSpeed + 0.1));
+}
+if (openOptionBtn && optionScreen) {
+    openOptionBtn.addEventListener('click', () => {
+        optionScreen.classList.remove('hidden');
+    });
+}
+if (closeOptionBtn && optionScreen) {
+    closeOptionBtn.addEventListener('click', () => {
+        optionScreen.classList.add('hidden');
     });
 }
 
-offsetUpBtn.addEventListener('click', () => updateJudgmentOffset(judgmentOffset + 5));
-offsetDownBtn.addEventListener('click', () => updateJudgmentOffset(judgmentOffset - 5));
+// オプションモーダル内
+if (optSpeedDownBtn) {
+    optSpeedDownBtn.addEventListener('click', () => updateNoteSpeed(noteSpeed - 0.1));
+}
+if (optSpeedUpBtn) {
+    optSpeedUpBtn.addEventListener('click', () => updateNoteSpeed(noteSpeed + 0.1));
+}
+if (optSpeedSlider) {
+    optSpeedSlider.addEventListener('input', (e) => updateNoteSpeed(parseFloat(e.target.value)));
+}
+if (optVolumeSlider) {
+    optVolumeSlider.addEventListener('input', (e) => updateVolume(parseFloat(e.target.value)));
+}
+if (optOffsetDownBtn) {
+    optOffsetDownBtn.addEventListener('click', () => updateJudgmentOffset(judgmentOffset - 5));
+}
+if (optOffsetUpBtn) {
+    optOffsetUpBtn.addEventListener('click', () => updateJudgmentOffset(judgmentOffset + 5));
+}
+
+// ポーズ画面
+if (pauseSpeedDownBtn) {
+    pauseSpeedDownBtn.addEventListener('click', () => updateNoteSpeed(noteSpeed - 0.1));
+}
+if (pauseSpeedUpBtn) {
+    pauseSpeedUpBtn.addEventListener('click', () => updateNoteSpeed(noteSpeed + 0.1));
+}
+if (offsetUpBtn) {
+    offsetUpBtn.addEventListener('click', () => updateJudgmentOffset(judgmentOffset + 5));
+}
+if (offsetDownBtn) {
+    offsetDownBtn.addEventListener('click', () => updateJudgmentOffset(judgmentOffset - 5));
+}
+
+// 初期設定のUI同期を実行
+updateNoteSpeed(noteSpeed);
+updateVolume(bgm.volume);
+updateJudgmentOffset(judgmentOffset);
 
 // キーボード操作（ゲーム中も調整可能にするため）
 document.addEventListener('keydown', (e) => {
