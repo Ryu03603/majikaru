@@ -458,6 +458,10 @@ async function loadCustomBeatmap(audioName) {
         const text = await file.text();
         const data = JSON.parse(text);
         
+        if (data.bpm !== undefined && !isNaN(parseFloat(data.bpm))) {
+            globalBPM = parseFloat(data.bpm);
+        }
+        
         return data.notes || null;
     } catch (e) {
         console.error("カスタム譜面のロード中にエラー:", e);
@@ -1015,7 +1019,26 @@ const MAX_HISTORY = 50;
 let dragStartSnapshot = null;
 
 function getNotesSnapshot() {
-    return JSON.parse(JSON.stringify(recordedNotes));
+    return {
+        notes: JSON.parse(JSON.stringify(recordedNotes)),
+        bpm: parseFloat(editorBpmInput.value) || globalBPM || 120
+    };
+}
+
+function restoreSnapshot(snapshot) {
+    if (Array.isArray(snapshot)) {
+        recordedNotes = snapshot;
+    } else if (snapshot && typeof snapshot === 'object') {
+        recordedNotes = snapshot.notes || [];
+        if (snapshot.bpm !== undefined && !isNaN(parseFloat(snapshot.bpm))) {
+            const b = parseFloat(snapshot.bpm);
+            editorBpmInput.value = b;
+            globalBPM = b;
+            updateTimelineGrid();
+        }
+    }
+    renderTimelineNotes();
+    updateUndoRedoButtons();
 }
 
 function saveState() {
@@ -1030,17 +1053,15 @@ function saveState() {
 function undo() {
     if (!isEditorMode || undoStack.length === 0) return;
     redoStack.push(getNotesSnapshot());
-    recordedNotes = undoStack.pop();
-    renderTimelineNotes();
-    updateUndoRedoButtons();
+    const prev = undoStack.pop();
+    restoreSnapshot(prev);
 }
 
 function redo() {
     if (!isEditorMode || redoStack.length === 0) return;
     undoStack.push(getNotesSnapshot());
-    recordedNotes = redoStack.pop();
-    renderTimelineNotes();
-    updateUndoRedoButtons();
+    const next = redoStack.pop();
+    restoreSnapshot(next);
 }
 
 function updateUndoRedoButtons() {
@@ -1146,8 +1167,24 @@ function snapToGrid(timeMs) {
     return Math.round(timeMs / gridMs) * gridMs;
 }
 
+let prevBpmValue = null;
+editorBpmInput.addEventListener('focus', () => {
+    prevBpmValue = editorBpmInput.value;
+});
+
 editorBpmInput.addEventListener('change', () => {
-    globalBPM = parseFloat(editorBpmInput.value) || 120;
+    const newBpm = parseFloat(editorBpmInput.value) || 120;
+    if (prevBpmValue !== null && parseFloat(prevBpmValue) !== newBpm) {
+        undoStack.push({
+            notes: JSON.parse(JSON.stringify(recordedNotes)),
+            bpm: parseFloat(prevBpmValue) || 120
+        });
+        if (undoStack.length > MAX_HISTORY) undoStack.shift();
+        redoStack = [];
+        updateUndoRedoButtons();
+    }
+    prevBpmValue = newBpm;
+    globalBPM = newBpm;
     updateTimelineGrid();
 });
 
@@ -1364,7 +1401,7 @@ window.addEventListener('mouseup', () => {
 
     // 操作によってノーツ状態に変化があればUndoスタックに保存
     if (dragStartSnapshot) {
-        if (JSON.stringify(dragStartSnapshot) !== JSON.stringify(recordedNotes)) {
+        if (JSON.stringify(dragStartSnapshot) !== JSON.stringify(getNotesSnapshot())) {
             undoStack.push(dragStartSnapshot);
             if (undoStack.length > MAX_HISTORY) {
                 undoStack.shift();
@@ -1527,9 +1564,12 @@ editorSaveBtn.addEventListener('click', async () => {
             duration: n.duration
         }));
         
+        const currentBpm = parseFloat(editorBpmInput.value) || globalBPM || 120;
+        
         const mapData = {
             audioFile: audioName,
             createdAt: now.toISOString(),
+            bpm: currentBpm,
             notes: cleanNotes
         };
         const jsonString = JSON.stringify(mapData, null, 2);
@@ -1571,6 +1611,14 @@ editorLoadFileInput.addEventListener('change', (e) => {
 
             // 読み込み前の状態をUndoスタックに保存
             saveState();
+
+            // BPMの読み込み・復元
+            if (data.bpm !== undefined && !isNaN(parseFloat(data.bpm))) {
+                const loadedBpm = parseFloat(data.bpm);
+                editorBpmInput.value = loadedBpm;
+                globalBPM = loadedBpm;
+                updateTimelineGrid();
+            }
 
             // ノーツの読み込み・復元
             recordedNotes = notesArray.map(n => ({
