@@ -211,8 +211,8 @@ body {
 /* Judgment Line & Hit Zones */
 #judgment-line {
     position: absolute;
-    bottom: 120px;
-    /* Offset from bottom */
+    bottom: 100px;
+    /* Offset from bottom (固定100px) */
     left: 0;
     width: 100%;
     height: 4px;
@@ -223,7 +223,7 @@ body {
 
 .hit-zone {
     position: absolute;
-    bottom: 120px;
+    bottom: 100px;
     left: 0;
     width: 100%;
     height: 60px;
@@ -622,9 +622,10 @@ input[type="range"] {
 }
 
 #offset-value {
-    font-size: 2rem;
+    font-family: 'Orbitron', monospace;
+    font-size: 1.8rem;
     font-weight: 700;
-    min-width: 60px;
+    min-width: 90px;
     text-align: center;
     color: #fff;
     text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
