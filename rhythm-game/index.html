@@ -6,7 +6,7 @@
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Rhythmias</title>
-    <link rel="stylesheet" href="style.css?v=9">
+    <link rel="stylesheet" href="style.css?v=15">
     <link
         href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Noto+Sans+JP:wght@400;700&display=swap"
         rel="stylesheet">
@@ -172,7 +172,7 @@
                             <line x1="5" y1="12" x2="19" y2="12"></line>
                         </svg>
                     </button>
-                    <span id="offset-value">0ms</span>
+                    <span id="offset-value">+100ms</span>
                     <button id="offset-up-btn" class="step-btn" title="Offset Later (+)">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -235,13 +235,23 @@
                                 <line x1="5" y1="12" x2="19" y2="12"></line>
                             </svg>
                         </button>
-                        <span id="opt-offset-value" class="setting-value">0ms</span>
+                        <span id="opt-offset-value" class="setting-value">+100ms</span>
                         <button id="opt-offset-up-btn" class="step-btn" title="Offset Later (+)">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                                 <line x1="12" y1="5" x2="12" y2="19"></line>
                                 <line x1="5" y1="12" x2="19" y2="12"></line>
                             </svg>
                         </button>
+                    </div>
+                </div>
+
+                <div class="option-row">
+                    <div class="option-label-group">
+                        <span class="option-title">SIMULTANEOUS LINE</span>
+                        <span class="option-desc">同時押しノーツを繋ぐ横線（ガイドライン）の表示</span>
+                    </div>
+                    <div class="option-controls" style="justify-content: center;">
+                        <button id="opt-sync-line-toggle" class="toggle-btn active">ON</button>
                     </div>
                 </div>
 
@@ -331,7 +341,7 @@
 
     <audio id="bgm"></audio>
 
-    <script src="script.js?v=9"></script>
+    <script src="script.js?v=15"></script>
 </body>
 
 </html>

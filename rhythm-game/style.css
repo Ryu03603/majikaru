@@ -310,6 +310,7 @@ body {
     background-color: #fff;
     border-radius: 5px;
     box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+    z-index: 2; /* 同時押し横線(z-index: 1)より手前に表示 */
     will-change: transform;
 }
 
@@ -999,4 +1000,49 @@ button:active {
     align-items: center;
     gap: 15px;
     margin-top: 5px;
+}
+
+/* 同時押しノーツを繋ぐ横線（ガイドライン）: クールホワイト／シルバー系 */
+.sync-line {
+    position: absolute;
+    height: 2px;
+    bottom: calc(100% + 14px); /* ノーツ高さ(30px)の中央(15px)にライン高さ(2px)の中心を完全に合わせる (15 - 1 = 14px) */
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.85), #ffffff, rgba(255, 255, 255, 0.85));
+    box-shadow: 0 0 4px #ffffff, 0 0 8px rgba(200, 235, 255, 0.8), 0 0 14px rgba(0, 238, 255, 0.35);
+    border-radius: 1px;
+    pointer-events: none;
+    z-index: 1; /* ノーツ(z-index: 2)の背後に配置 */
+    will-change: transform;
+    transition: opacity 0.15s ease-out;
+}
+
+/* トグルボタン */
+.toggle-btn {
+    padding: 8px 26px;
+    font-size: 1rem;
+    font-weight: 700;
+    font-family: 'Orbitron', sans-serif;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: rgba(255, 255, 255, 0.08);
+    border: 2px solid #6b7280;
+    color: #9ca3af;
+    box-shadow: none;
+    letter-spacing: 1px;
+}
+
+.toggle-btn.active {
+    background: rgba(0, 238, 255, 0.2);
+    border-color: #00eeff;
+    color: #00eeff;
+    box-shadow: 0 0 15px rgba(0, 238, 255, 0.5);
+}
+
+.toggle-btn:hover {
+    transform: scale(1.05);
+}
+
+.toggle-btn:active {
+    transform: scale(0.95);
 }

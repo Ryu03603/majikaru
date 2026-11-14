@@ -43,6 +43,7 @@ const optVolumeDisplay = document.getElementById('opt-volume-display');
 const optOffsetDownBtn = document.getElementById('opt-offset-down-btn');
 const optOffsetUpBtn = document.getElementById('opt-offset-up-btn');
 const optOffsetValueEl = document.getElementById('opt-offset-value');
+const optSyncLineToggle = document.getElementById('opt-sync-line-toggle');
 
 const pauseSpeedDownBtn = document.getElementById('pause-speed-down-btn');
 const pauseSpeedUpBtn = document.getElementById('pause-speed-up-btn');
@@ -109,11 +110,49 @@ let globalBPM = 120;
 let judgmentOffset = 100; // 判定ラインの高さ(px)は100に固定
 const JUDGMENT_LINE_OFFSET = 100;
 
-// タイミングオフセット (ms): 音とノーツのタイミング微調整用
-let timingOffset = 0;
+// タイミングオフセット (ms): 音とノーツのタイミング微調整用 (デフォルト: +100ms)
+let timingOffset = 100;
 const savedTimingOffset = localStorage.getItem('rhythmias_timing_offset');
 if (savedTimingOffset !== null && !isNaN(parseInt(savedTimingOffset))) {
     timingOffset = Math.max(-200, Math.min(200, parseInt(savedTimingOffset)));
+} else {
+    timingOffset = 100;
+}
+
+// 同時押しライン設定 (デフォルト: ON)
+let showSyncLine = true;
+const savedSyncLine = localStorage.getItem('rhythmias_sync_line');
+if (savedSyncLine !== null) {
+    showSyncLine = savedSyncLine === 'true';
+} else {
+    showSyncLine = true;
+}
+
+let syncLines = [];
+let syncLineIndex = 0;
+let activeSyncLines = [];
+
+function updateSyncLine(enabled) {
+    showSyncLine = !!enabled;
+    localStorage.setItem('rhythmias_sync_line', showSyncLine.toString());
+    if (optSyncLineToggle) {
+        if (showSyncLine) {
+            optSyncLineToggle.classList.add('active');
+            optSyncLineToggle.textContent = 'ON';
+        } else {
+            optSyncLineToggle.classList.remove('active');
+            optSyncLineToggle.textContent = 'OFF';
+        }
+    }
+    // OFFに切り替えた場合は画面上のラインを即時クリア
+    if (!showSyncLine && activeSyncLines.length > 0) {
+        activeSyncLines.forEach(sl => {
+            if (sl.element && sl.element.parentNode) {
+                sl.element.parentNode.removeChild(sl.element);
+            }
+        });
+        activeSyncLines = [];
+    }
 }
 
 const savedVolume = localStorage.getItem('rhythmias_volume');
@@ -148,7 +187,7 @@ function updateVolume(val) {
 
 function updateTimingOffset(val) {
     const num = parseInt(val);
-    timingOffset = isNaN(num) ? 0 : Math.max(-200, Math.min(200, num));
+    timingOffset = isNaN(num) ? 100 : Math.max(-200, Math.min(200, num));
     localStorage.setItem('rhythmias_timing_offset', timingOffset.toString());
 
     // 表示用フォーマット (例: "+15ms", "-10ms", "0ms")
@@ -609,6 +648,48 @@ function initGame() {
         note.isHoldingCompleted = false;
         note.element = null;
     });
+
+    // 同時押しラインの初期化
+    syncLineIndex = 0;
+    activeSyncLines = [];
+    syncLines = [];
+
+    if (showSyncLine) {
+        // 同じ判定時間のノーツをグループ化（ミリ秒単位で丸めて比較）
+        const timeGroups = new Map();
+        beatmap.forEach(note => {
+            const t = Math.round(note.time);
+            if (!timeGroups.has(t)) timeGroups.set(t, []);
+            timeGroups.get(t).push(note);
+        });
+
+        timeGroups.forEach((notes) => {
+            if (notes.length >= 2) {
+                // レーン順にソート
+                notes.sort((a, b) => a.lane - b.lane);
+
+                // 隣り合うノーツ同士のレーン差をチェック
+                for (let k = 0; k < notes.length - 1; k++) {
+                    const noteA = notes[k];
+                    const noteB = notes[k + 1];
+                    const laneDiff = noteB.lane - noteA.lane;
+
+                    // 隣り合っていない（差が2以上、間に空きレーンがある）場合のみ横線を作成
+                    if (laneDiff > 1) {
+                        syncLines.push({
+                            time: noteA.time,
+                            laneA: noteA.lane,
+                            laneB: noteB.lane,
+                            noteA: noteA,
+                            noteB: noteB,
+                            element: null
+                        });
+                    }
+                }
+            }
+        });
+        syncLines.sort((a, b) => a.time - b.time);
+    }
 }
 
 // ゲーム開始
@@ -672,6 +753,7 @@ async function startGame() {
 function endGame() {
     isPlaying = false;
     cancelAnimationFrame(animationId);
+    activeSyncLines = [];
 
     // リザルト画面の更新
     document.getElementById('result-score').textContent = score;
@@ -726,9 +808,55 @@ function gameLoop() {
             }
         }
 
+        // 同時押しラインの生成
+        if (showSyncLine) {
+            while (syncLineIndex < syncLines.length) {
+                const sl = syncLines[syncLineIndex];
+                const targetTime = sl.time + timingOffset;
+                const spawnTime = targetTime - NOTE_SPEED;
+
+                if (currentTime >= spawnTime) {
+                    spawnSyncLineElement(sl);
+                    activeSyncLines.push(sl);
+                    syncLineIndex++;
+                } else {
+                    break;
+                }
+            }
+        }
+
         // 画面の高さと判定ラインの位置を取得（下から100px固定）
         const playAreaHeight = playArea.clientHeight || window.innerHeight;
         const judgmentLineY = Math.max(100, playAreaHeight - JUDGMENT_LINE_OFFSET);
+
+        // 同時押しラインの位置更新と削除
+        if (showSyncLine) {
+            for (let i = activeSyncLines.length - 1; i >= 0; i--) {
+                const sl = activeSyncLines[i];
+                const targetTime = sl.time + timingOffset;
+                const progress = (currentTime - (targetTime - NOTE_SPEED)) / NOTE_SPEED;
+                const currentY = progress * judgmentLineY;
+
+                if (sl.element) {
+                    sl.element.style.transform = `translateY(${currentY}px)`;
+                }
+
+                // 削除判定:
+                // 1. 画面下端外に出た
+                // 2. 構成ノーツのいずれかがヒットされた（タップされた、またはホールド中）
+                // 3. 構成ノーツがすべて判定済みになった
+                const isHit = (sl.noteA.isHolding || (sl.noteA.handled && (!sl.noteA.element || !sl.noteA.element.parentNode))) ||
+                              (sl.noteB.isHolding || (sl.noteB.handled && (!sl.noteB.element || !sl.noteB.element.parentNode)));
+                const allHandled = sl.noteA.handled && sl.noteB.handled;
+
+                if (currentY > playAreaHeight + 50 || isHit || allHandled) {
+                    if (sl.element && sl.element.parentNode) {
+                        sl.element.parentNode.removeChild(sl.element);
+                    }
+                    activeSyncLines.splice(i, 1);
+                }
+            }
+        }
 
         // ノーツの位置更新とMISS判定
         for (let i = activeNotes.length - 1; i >= 0; i--) {
@@ -809,6 +937,20 @@ function gameLoop() {
     if (isPlaying && !isPaused) {
         animationId = requestAnimationFrame(gameLoop);
     }
+}
+
+// 同時押しラインのDOM要素を生成
+function spawnSyncLineElement(syncLine) {
+    const el = document.createElement('div');
+    el.classList.add('sync-line');
+    const laneWidthPercent = 100 / currentLanes;
+    const leftPercent = syncLine.laneA * laneWidthPercent + (laneWidthPercent / 2);
+    const widthPercent = (syncLine.laneB - syncLine.laneA) * laneWidthPercent;
+    el.style.left = `${leftPercent}%`;
+    el.style.width = `${widthPercent}%`;
+    // ノーツより背面に配置するため先頭に挿入
+    notesContainer.prepend(el);
+    syncLine.element = el;
 }
 
 // ノーツのDOM要素を生成
@@ -1086,6 +1228,7 @@ titleBtn.addEventListener('click', () => {
     isPlaying = false;
     bgm.pause();
     bgm.currentTime = 0;
+    activeSyncLines = [];
     pauseScreen.classList.add('hidden');
     startScreen.classList.remove('hidden');
 });
@@ -1131,6 +1274,11 @@ if (optOffsetDownBtn) {
 if (optOffsetUpBtn) {
     optOffsetUpBtn.addEventListener('click', () => updateTimingOffset(timingOffset + 5));
 }
+if (optSyncLineToggle) {
+    optSyncLineToggle.addEventListener('click', () => {
+        updateSyncLine(!showSyncLine);
+    });
+}
 
 // ポーズ画面
 if (pauseSpeedDownBtn) {
@@ -1150,6 +1298,7 @@ if (offsetDownBtn) {
 updateNoteSpeed(noteSpeed);
 updateVolume(bgm.volume);
 updateTimingOffset(timingOffset);
+updateSyncLine(showSyncLine);
 
 // キーボード操作（ゲーム中も調整可能にするため）
 document.addEventListener('keydown', (e) => {
