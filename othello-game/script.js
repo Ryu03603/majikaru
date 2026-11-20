@@ -1275,10 +1275,16 @@ function commitMagic(index, casterIsCpu, logicCallback, isMargo = false) {
       currentTurn = casterIsCpu ? cpuColor : playerColor;
       validMoves = getValidMoves(currentTurn);
       document.querySelectorAll('.cell.valid-move').forEach(el => el.classList.remove('valid-move'));
-      validMoves.forEach(m => {
-        const idx = m.r * COLS + m.c;
+      const isForced = forcedOpponentMove && (forcedOpponentMove.player === undefined || currentTurn === forcedOpponentMove.player);
+      if (isForced) {
+        const idx = forcedOpponentMove.r * COLS + forcedOpponentMove.c;
         if (boardEl.children[idx]) boardEl.children[idx].classList.add('valid-move');
-      });
+      } else {
+        validMoves.forEach(m => {
+          const idx = m.r * COLS + m.c;
+          if (boardEl.children[idx]) boardEl.children[idx].classList.add('valid-move');
+        });
+      }
       updateBoardDOM();
       updateTurnUI();
     } else {
@@ -1299,6 +1305,8 @@ function endMagicTurn() {
 
   // もし前のターンでメルルの制約（打てないマス）が生まれていた場合、自分の番が終わるのでその制約を解除する
   if (bannedOpponentMove && currentTurn === bannedOpponentMove.player) bannedOpponentMove = null;
+  // もし前のターンでアンアンの制約（指定されたマス）が生まれていた場合、自分の番が終わるのでその制約を解除する
+  if (forcedOpponentMove && (forcedOpponentMove.player === undefined || currentTurn === forcedOpponentMove.player)) forcedOpponentMove = null;
 
   targetingState = null;
   activeMagicIndex = null;
@@ -1510,7 +1518,7 @@ function handleTargetingClick(r, c) {
     const opMoves = getValidMoves(opColor);
     // 相手が本当に置ける場所以外なら弾く
     if (!opMoves.find(m => m.r === r && m.c === c)) { showModalAlert("有効なマスではありません。"); return; }
-    forcedOpponentMove = { r, c };
+    forcedOpponentMove = { r, c, player: opColor };
 
     // 多重動作防止のため、魔法のインデックスをローカルに確保して全体を無効化する
     const idx = activeMagicIndex;
@@ -1738,7 +1746,7 @@ function handleCellClick(r, c) {
   const move = validMoves.find(m => m.r === r && m.c === c);
   if (move) {
     // 夏目アンアンによって特定のマスに置くことを強制されている場合は、弾く
-    if (forcedOpponentMove && currentTurn === playerColor) {
+    if (forcedOpponentMove && (forcedOpponentMove.player === undefined || currentTurn === forcedOpponentMove.player)) {
       if (r !== forcedOpponentMove.r || c !== forcedOpponentMove.c) {
         showModalAlert('夏目アンアン：相手に指定されたマスにしか置けません！'); return;
       }
@@ -2051,7 +2059,8 @@ function updateGameState() {
 
   // プレイヤーのターン、または2人プレイモードなら「ここに置けるよ」というヒントマーカーを付ける
   if (currentTurn === playerColor || (opponentType === 'pvp' && !window.isOnlineMode)) {
-    if (forcedOpponentMove) {
+    const isForced = forcedOpponentMove && (forcedOpponentMove.player === undefined || currentTurn === forcedOpponentMove.player);
+    if (isForced) {
       // もしアンアンに強制指定されているなら、そこ以外光らせない
       const idx = forcedOpponentMove.r * COLS + forcedOpponentMove.c;
       if (boardEl.children[idx]) boardEl.children[idx].classList.add('valid-move');
@@ -2373,7 +2382,7 @@ function makeCPUMovePlacement() {
   if (validMoves.length === 0) return;
 
   let bestMove = validMoves[0];
-  if (forcedOpponentMove && currentTurn === cpuColor) {
+  if (forcedOpponentMove && (forcedOpponentMove.player === undefined || currentTurn === forcedOpponentMove.player)) {
     // アンアンにより指定されていた場合は問答無用でそこへ置く
     const forceTarget = validMoves.find(m => m.r === forcedOpponentMove.r && m.c === forcedOpponentMove.c);
     if (forceTarget) bestMove = forceTarget;
@@ -2598,7 +2607,14 @@ function executeCpuMagic(spell, index) {
       });
       return 'async'; // commitMagic側で同期実行をキャンセルするフラグ
     }; break;
-    case 3: { const pm = getValidMoves(playerColor); if (pm.length > 0) { cb = () => { forcedOpponentMove = pm[Math.floor(Math.random() * pm.length)]; }; } else { ok = false; } break; }
+    case 3: {
+      const pm = getValidMoves(playerColor);
+      if (pm.length > 0) {
+        const chosenMove = pm[Math.floor(Math.random() * pm.length)];
+        cb = () => { forcedOpponentMove = { r: chosenMove.r, c: chosenMove.c, player: playerColor }; };
+      } else { ok = false; }
+      break;
+    }
     case 4: { const s = getRandomStone(playerColor) || getRandomStone(cpuColor); if (s) { cb = () => { board[s.r][s.c] = Math.random() < 0.5 ? BLACK : WHITE; specialStones[s.r][s.c] = 'changed'; }; } else { ok = false; } break; }
     case 5: {
       const u = playerMagics.filter(m => !m.used && !playerUsedMagicIds.has(m.spell.id));
