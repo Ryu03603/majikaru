@@ -88,6 +88,10 @@ h1 {
 .score-avatar {
   width: 40px;
   height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  flex-shrink: 0;
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), inset 0 -2px 4px rgba(0, 0, 0, 0.2);
 }
@@ -865,6 +869,40 @@ button:disabled,
    9. Responsive Design
    ========================================== */
 @media (max-width: 600px) {
+  /* スコアボード・ターン表示のスマホ最適化（石の真円維持と余白調整） */
+  .game-info {
+    padding: 10px 14px;
+    gap: 8px;
+  }
+
+  .score-card {
+    gap: 8px;
+  }
+
+  .score-avatar {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    flex-shrink: 0;
+    aspect-ratio: 1 / 1;
+  }
+
+  .score-label {
+    font-size: 0.72rem;
+  }
+
+  .score-value {
+    font-size: 1.3rem;
+  }
+
+  .turn-indicator {
+    padding: 6px 10px;
+    font-size: 0.88rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
   .modal-overlay {
     padding: 16px 10px;
     align-items: flex-start;
