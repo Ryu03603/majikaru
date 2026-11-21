@@ -978,3 +978,295 @@ button:disabled,
     display: none !important;
   }
 }
+
+/* ==========================================
+   10. Fullscreen Magic Card Gallery Modal
+   ========================================== */
+.gallery-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200000;
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.gallery-container {
+  width: 100%;
+  max-width: 1200px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 24px;
+  box-sizing: border-box;
+}
+
+.gallery-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.gallery-title {
+  font-size: 1.45rem;
+  font-weight: 700;
+  margin: 0;
+  background: linear-gradient(135deg, #c084fc, #818cf8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gallery-subtitle {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  margin: 4px 0 0 0;
+}
+
+.gallery-close-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #f8fafc;
+  padding: 8px 18px;
+  border-radius: 9999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.gallery-close-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  transform: scale(1.03);
+}
+
+.gallery-filter-bar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+
+.gallery-filter-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.gallery-filter-btn {
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  border-radius: 20px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gallery-filter-btn:hover {
+  background: rgba(51, 65, 85, 0.9);
+  color: #f8fafc;
+}
+
+.gallery-filter-btn.active {
+  background: #8b5cf6;
+  color: #ffffff;
+  border-color: #a78bfa;
+  font-weight: 600;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.4);
+}
+
+.filter-count {
+  font-size: 0.75rem;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.gallery-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.gallery-scroll-area::-webkit-scrollbar {
+  width: 6px;
+}
+
+.gallery-scroll-area::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 4px;
+}
+
+.gallery-scroll-area::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+}
+
+.gallery-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+  padding-bottom: 30px;
+}
+
+.gallery-card {
+  display: flex;
+  gap: 14px;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 14px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.gallery-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+  border-color: rgba(192, 132, 252, 0.4);
+}
+
+.gallery-card-img-wrap {
+  width: 90px;
+  height: 126px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: #1e293b;
+}
+
+.gallery-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.gallery-card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.gallery-card-header {
+  margin-bottom: 8px;
+}
+
+.gallery-card-name-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.gallery-card-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fcd34d;
+}
+
+.gallery-card-spell {
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
+.gallery-card-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.gallery-tag {
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.gallery-tag-target {
+  background: rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.gallery-card-desc {
+  font-size: 0.85rem;
+  color: #e2e8f0;
+  line-height: 1.5;
+  margin: 0;
+}
+
+
+@media (max-width: 600px) {
+  .gallery-container {
+    padding: 12px 10px;
+  }
+
+  .gallery-title {
+    font-size: 1.2rem;
+  }
+
+  .gallery-subtitle {
+    font-size: 0.75rem;
+  }
+
+  .gallery-close-btn {
+    padding: 6px 14px;
+    font-size: 0.82rem;
+  }
+
+  .gallery-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .gallery-card {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .gallery-card-img-wrap {
+    width: 78px;
+    height: 109px;
+  }
+
+  .gallery-card-name {
+    font-size: 0.98rem;
+  }
+
+  .gallery-card-desc {
+    font-size: 0.82rem;
+  }
+}

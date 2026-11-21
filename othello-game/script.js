@@ -201,6 +201,7 @@ const passModal = document.getElementById('pass-modal');
 const winnerText = document.getElementById('winner-text');
 const surrenderBtn = document.getElementById('surrender-btn');
 const undoBtn = document.getElementById('undo-btn');
+const galleryBtn = document.getElementById('gallery-btn');
 let undoSnapshot = null;         // 1手戻る用スナップショット（直前のプレイヤー着手前状態）
 let pendingUndoSnapshot = null;  // プレイヤー着手直後の保留スナップショット
 const btnPlayBlack = document.getElementById('btn-play-black');
@@ -236,7 +237,7 @@ const btnCloseGenericAlert = document.getElementById('btn-close-generic-alert');
 const playerTimerEl = document.getElementById('player-timer');
 const cpuTimerEl = document.getElementById('cpu-timer');
 
-// ネット対戦用 持ち時間管理 (各10分 = 600秒)
+// オンライン対戦用 持ち時間管理 (各10分 = 600秒)
 const DEFAULT_TIME_LIMIT = 600;
 let playerTimeLeft = DEFAULT_TIME_LIMIT;
 let cpuTimeLeft = DEFAULT_TIME_LIMIT;
@@ -497,6 +498,7 @@ function initGame(selectedPlayerColor) {
   titleScreenModal.style.display = 'none'; gameOverModal.style.display = 'none';
   passModal.style.display = 'none'; confirmSurrenderModal.style.display = 'none'; surrenderBtn.style.display = 'block';
   updateUndoButtonUI();
+  updateGalleryButtonUI();
 
   // スコアボード上のUIテキストを正しい色に設定
   if (window.isOnlineMode) {
@@ -511,7 +513,7 @@ function initGame(selectedPlayerColor) {
   document.querySelector('#player-score-card .score-avatar').className = `score-avatar ${playerColor === BLACK ? 'black-disc' : 'white-disc'}`;
   document.querySelector('#cpu-score-card .score-avatar').className = `score-avatar ${cpuColor === BLACK ? 'black-disc' : 'white-disc'}`;
 
-  // ネット対戦時の持ち時間タイマー初期化 (10分 = 600秒)
+  // オンライン対戦時の持ち時間タイマー初期化 (10分 = 600秒)
   if (onlineGameTimer) {
     clearInterval(onlineGameTimer);
     onlineGameTimer = null;
@@ -531,7 +533,7 @@ function initGame(selectedPlayerColor) {
   targetBar.style.display = 'none';
   if (isManosabaMode) {
     if (window.isOnlineMode) {
-      // ネット対戦時：黒の手札と白の手札を別々にドローして手札重複を防ぐ
+      // オンライン対戦時：黒の手札と白の手札を別々にドローして手札重複を防ぐ
       const blackHand = drawMagics(5, playerUsedMagicIds);
       const whiteHand = drawMagics(5, cpuUsedMagicIds);
 
@@ -1209,6 +1211,7 @@ function commitMagic(index, casterIsCpu, logicCallback, isMargo = false) {
     undoSnapshot = null;
     pendingUndoSnapshot = null;
     updateUndoButtonUI();
+  updateGalleryButtonUI();
   }
 
   playMagicSound(magic.spell.id);
@@ -1314,7 +1317,7 @@ function endMagicTurn() {
   isCPUThinking = false;
 
   // ターンを交代
-  // ネット対戦時は魔法の効果結果を相手に同期送信
+  // オンライン対戦時は魔法の効果結果を相手に同期送信
   if (window.isOnlineMode && window.netSendAction) {
     window.netSendAction({
       type: 'magic',
@@ -1739,7 +1742,7 @@ function handleCellClick(r, c) {
   // pvpモード時は currentTurn に関わりなくどちらの番でも 人間のクリックを許可する
   if (isCPUThinking || (opponentType === 'cpu' && currentTurn !== playerColor)) return;
 
-  // ネット対戦時、自分のターンでなければクリックをブロック
+  // オンライン対戦時、自分のターンでなければクリックをブロック
   if (window.isOnlineMode && (currentTurn !== window.myOnlineColor || currentTurn !== playerColor)) return;
 
   // 今クリックしようとしているマスが、通常でちゃんと「置けるマス(validMoves)」かどうか調べる
@@ -1756,9 +1759,10 @@ function handleCellClick(r, c) {
     if (opponentType === 'cpu' && !window.isOnlineMode && currentTurn === playerColor) {
       pendingUndoSnapshot = createGameStateSnapshot();
       updateUndoButtonUI();
+  updateGalleryButtonUI();
     }
 
-    // ネット対戦時は着手を相手に送信 (持ち時間の同期情報も含める)
+    // オンライン対戦時は着手を相手に送信 (持ち時間の同期情報も含める)
     if (window.isOnlineMode && window.netSendAction) {
       window.netSendAction({ type: 'place', r, c, timeLeft: playerTimeLeft });
     }
@@ -1933,6 +1937,11 @@ function updateUndoButtonUI() {
   undoBtn.disabled = !canUndo;
 }
 
+function updateGalleryButtonUI() {
+  if (!galleryBtn) return;
+  galleryBtn.style.display = (!gameEnded && isManosabaMode) ? 'block' : 'none';
+}
+
 /**
  * CPU戦において直前の1手を巻き戻します（最大1手まで、連続使用不可）。
  */
@@ -1998,6 +2007,7 @@ function undoMove() {
 
   // ボタンを非活性化
   updateUndoButtonUI();
+  updateGalleryButtonUI();
 }
 
 /**
@@ -2073,6 +2083,7 @@ function updateGameState() {
   // ヘッダーの点灯(UI)を切り替える
   updateTurnUI();
   updateUndoButtonUI();
+  updateGalleryButtonUI();
 
   // もしこのターン置ける場所がどこにもなかったら「パス」となる
   if (validMoves.length === 0) {
@@ -2085,6 +2096,7 @@ function updateGameState() {
       showPassMessage(currentTurn);
       isCPUThinking = true;
       updateUndoButtonUI();
+  updateGalleryButtonUI();
       setTimeout(() => {
         if (currentTurn === playerColor) { if (playerMagicBlocked > 0) playerMagicBlocked--; } else { if (cpuMagicBlocked > 0) cpuMagicBlocked--; }
         forcedOpponentMove = null;
@@ -2100,6 +2112,7 @@ function updateGameState() {
   if (opponentType === 'cpu' && currentTurn === cpuColor && !isCPUThinking) {
     isCPUThinking = true;
     updateUndoButtonUI();
+  updateGalleryButtonUI();
     setTimeout(makeCPUMove, 800 + Math.random() * 700);
   }
 }
@@ -2492,6 +2505,7 @@ function makeCPUMovePlacement() {
   isCPUThinking = false;
   executeMove(bestMove);
   updateUndoButtonUI();
+  updateGalleryButtonUI();
 }
 
 /**
@@ -2702,6 +2716,7 @@ function executeCpuMagic(spell, index) {
       isCPUThinking = false;
       commitMagic(index, true, cb, spell.id === 7);
       updateUndoButtonUI();
+  updateGalleryButtonUI();
     };
     btnClose.addEventListener('click', closeHandler);
 
@@ -2725,6 +2740,7 @@ function surrenderGame() {
   if (gameEnded) return;
   gameEnded = true; isCPUThinking = false; surrenderBtn.style.display = 'none';
   if (undoBtn) undoBtn.style.display = 'none';
+  if (galleryBtn) galleryBtn.style.display = 'none';
   if (onlineGameTimer) { clearInterval(onlineGameTimer); onlineGameTimer = null; }
   finalPlayerScore.textContent = playerScores[playerColor]; finalCpuScore.textContent = playerScores[cpuColor];
   const fpLabel = document.getElementById('final-player-label');
@@ -2978,6 +2994,7 @@ window.handleRemoteSurrender = function() {
   if (gameEnded) return;
   gameEnded = true; isCPUThinking = false; surrenderBtn.style.display = 'none';
   if (undoBtn) undoBtn.style.display = 'none';
+  if (galleryBtn) galleryBtn.style.display = 'none';
   if (onlineGameTimer) { clearInterval(onlineGameTimer); onlineGameTimer = null; }
   finalPlayerScore.textContent = playerScores[playerColor]; finalCpuScore.textContent = playerScores[cpuColor];
   const fpLabel = document.getElementById('final-player-label');
@@ -3014,6 +3031,7 @@ function endGame() {
   if (gameEnded) return;
   gameEnded = true; surrenderBtn.style.display = 'none';
   if (undoBtn) undoBtn.style.display = 'none';
+  if (galleryBtn) galleryBtn.style.display = 'none';
   if (onlineGameTimer) { clearInterval(onlineGameTimer); onlineGameTimer = null; }
   const pScore = playerScores[playerColor]; const cScore = playerScores[cpuColor];
   finalPlayerScore.textContent = pScore; finalCpuScore.textContent = cScore;
@@ -3158,7 +3176,7 @@ if (btnPlayPvp) {
   });
 }
 
-// ネット対戦：マッチング開始ボタン
+// オンライン対戦：マッチング開始ボタン
 const btnStartMatching = document.getElementById('btn-start-matching');
 if (btnStartMatching) {
   btnStartMatching.addEventListener('click', () => {
@@ -3202,6 +3220,7 @@ restartBtn.addEventListener('click', () => {
 
   window.isOnlineMode = false;
   if (undoBtn) undoBtn.style.display = 'none';
+  if (galleryBtn) galleryBtn.style.display = 'none';
   undoSnapshot = null;
   pendingUndoSnapshot = null;
   btnPlayBlack.disabled = false;
@@ -3256,7 +3275,7 @@ function updateModeUI() {
   const opType = document.querySelector('input[name="opponent-type"]:checked')?.value || 'cpu';
   let mode = document.querySelector('input[name="game-mode"]:checked')?.value || 'normal';
 
-  // ネット対戦用設定と開始ボタンの表示分岐
+  // オンライン対戦用設定と開始ボタンの表示分岐
   if (onlineSettings) {
     onlineSettings.style.display = opType === 'online' ? 'block' : 'none';
     if (opType !== 'online' && window.isMatchingWaiting && window.netCancelMatching) { window.netCancelMatching(); }
@@ -3315,6 +3334,7 @@ function updateModeUI() {
     if (specialContainer) specialContainer.style.display = 'none';
   }
   updateUndoButtonUI();
+  updateGalleryButtonUI();
 }
 
 document.getElementsByName('opponent-type').forEach(radio => radio.addEventListener('change', updateModeUI));
@@ -3387,3 +3407,255 @@ if (pvpBtn) pvpBtn.disabled = false;
 // Global export of initGame
 window.initGame = initGame;
 
+
+// ==========================================
+// 魔法カード図鑑 (フルスクリーンイラスト一覧)
+// ==========================================
+
+const MAGIC_GALLERY_DATA = [
+  {
+    id: 1,
+    name: "桜羽エマ",
+    spellName: "魔女殺し",
+    category: "妨害",
+    categoryColor: { bg: 'rgba(239, 68, 68, 0.18)', color: '#f87171', border: 'rgba(239, 68, 68, 0.35)' },
+    targetType: "対象: 相手手札",
+    desc: "相手の手札にある魔法カードを物理的に1枚打ち消す（消滅させる）。実質的に相手の手札を永続的に1枚減らします。",
+    advice: "相手の強力な手札を先手を打って潰せる強力な妨害。初手や序盤に使うことで相手の戦術を大きく制限できます。"
+  },
+  {
+    id: 2,
+    name: "二階堂ヒロ",
+    spellName: "死に戻り",
+    category: "手札・補助",
+    categoryColor: { bg: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: 'rgba(59, 130, 246, 0.35)' },
+    targetType: "対象: 双方の手札",
+    desc: "自分と相手の魔法をそれぞれの使用状態を維持したまま、山札から新しく引き直します。",
+    advice: "手札の魔法が状況に合わない時のリロールに最適。ただし、既に使用した魔法は再度引いても使用不可のままです。"
+  },
+  {
+    id: 3,
+    name: "夏目アンアン",
+    spellName: "洗脳",
+    category: "妨害",
+    categoryColor: { bg: 'rgba(239, 68, 68, 0.18)', color: '#f87171', border: 'rgba(239, 68, 68, 0.35)' },
+    targetType: "対象: 次の着手マス",
+    desc: "次の相手のターンに石を置くマスを指定し、そこにしか置けなくします（相手に置けるマスがない場合は発動不可）。",
+    advice: "相手に隅（角）や危険なマスを強制的に取らせたり、自分の有利な展開を確定させたりできる戦局決定打の1枚。"
+  },
+  {
+    id: 4,
+    name: "城ケ崎ノア",
+    spellName: "液体操作",
+    category: "盤面操作",
+    categoryColor: { bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.35)' },
+    targetType: "対象: 盤面の石1つ",
+    desc: "盤面上の任意の石1つを、指定した色（黒または白）に直接書き換えます。",
+    advice: "角の石を自分の色に塗り替えたり、相手の挟むルートを遮断・自分の挟む起点を作ったりと応用範囲が極めて広いです。"
+  },
+  {
+    id: 5,
+    name: "蓮見レイア",
+    spellName: "視線誘導",
+    category: "妨害",
+    categoryColor: { bg: 'rgba(239, 68, 68, 0.18)', color: '#f87171', border: 'rgba(239, 68, 68, 0.35)' },
+    targetType: "対象: 相手手札",
+    desc: "相手の手札の魔法1つをランダムで使用済み（使用不可）にします。",
+    advice: "相手の未使用魔法を不発にできる妨害。相手の手札が少ない時ほどキーカードを狙い撃ちしやすくなります。"
+  },
+  {
+    id: 6,
+    name: "佐伯ミリア",
+    spellName: "入れ替わり",
+    category: "盤面操作",
+    categoryColor: { bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.35)' },
+    targetType: "対象: 自分と相手の石各1つ",
+    desc: "盤面上の自分の石1つと、相手の石1つの場所をそのまま入れ替えます。",
+    advice: "相手が確保した角の石と、盤面中央の自分の石をスワップして角を奪い取るコンボが極めて強力です。"
+  },
+  {
+    id: 7,
+    name: "宝生マーゴ",
+    spellName: "モノマネ",
+    category: "手札・補助",
+    categoryColor: { bg: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: 'rgba(59, 130, 246, 0.35)' },
+    targetType: "対象: 相手の未使用魔法",
+    desc: "相手の未使用魔法を1つコピーして自分のカードとして上書きします。※コピー時はターンを消費しません。",
+    advice: "相手の切り札を奪って即座に使える万能カード。ターン消費がないため、コピー後にそのまま連続使用できます。"
+  },
+  {
+    id: 8,
+    name: "黒部ナノカ",
+    spellName: "幻視",
+    category: "妨害",
+    categoryColor: { bg: 'rgba(239, 68, 68, 0.18)', color: '#f87171', border: 'rgba(239, 68, 68, 0.35)' },
+    targetType: "対象: 相手プレイヤー",
+    desc: "相手は発動から3ターンの間、一切の魔法を使用できなくなります。",
+    advice: "終盤のラッシュやコンボを封じるのに最適。相手が魔法を使えない間に安全に盤面を固めることができます。"
+  },
+  {
+    id: 9,
+    name: "紫藤アリサ",
+    spellName: "発火",
+    category: "盤面操作",
+    categoryColor: { bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.35)' },
+    targetType: "対象: 盤面のマス",
+    desc: "選択したマスを発火させます。3ターン後にそこにある石は消滅します。",
+    advice: "角や重要マスに置かれた相手の石を消滅させるプレッシャーを与えたり、相手の着手計画を狂わせることができます。"
+  },
+  {
+    id: 10,
+    name: "橘シェリー",
+    spellName: "怪力",
+    category: "盤面操作",
+    categoryColor: { bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.35)' },
+    targetType: "対象: 盤面全体",
+    desc: "現在配置されているすべての石の数を維持したまま、ランダムなマスに置き直します。",
+    advice: "大劣勢の盤面を一発でリセットして大逆転を狙えるカオス魔法。確定石を崩したい時のギャンブルにも。"
+  },
+  {
+    id: 11,
+    name: "遠野ハンナ",
+    spellName: "浮遊",
+    category: "盤面操作",
+    categoryColor: { bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.35)' },
+    targetType: "対象: 石1つと空きマス",
+    desc: "盤面上の任意の石1つを、別の空いているマスへ移動させます。",
+    advice: "自分の石を角へ移動させて安全地帯を作ったり、相手の石を危険な位置へ移動させて挟みやすくできます。"
+  },
+  {
+    id: 12,
+    name: "沢渡ココ",
+    spellName: "千里眼",
+    category: "手札・補助",
+    categoryColor: { bg: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: 'rgba(59, 130, 246, 0.35)' },
+    targetType: "対象: 相手の伏せ手札",
+    desc: "相手の伏せられている手札の魔法をすべて公開（表向き）にします。",
+    advice: "相手が何の魔法を持っているかを完全に把握できるため、奇襲（アンアンやメルル等）への警戒・対策が立てやすくなります。"
+  },
+  {
+    id: 13,
+    name: "氷上メルル",
+    spellName: "治療",
+    category: "特殊",
+    categoryColor: { bg: 'rgba(236, 72, 153, 0.18)', color: '#f472b6', border: 'rgba(236, 72, 153, 0.35)' },
+    targetType: "対象: 直前の1手",
+    desc: "盤面を1ターン前（相手が打つ前）の状態まで時を戻します。さらに、相手が直前に打っていたマスを封鎖します。",
+    advice: "相手が角を取ったり大量反転させた手を丸ごとキャンセルし、そのマスを封鎖する最強クラスの時間遡行魔法です。"
+  }
+];
+
+function renderMagicGallery(filterCategory) {
+  if (!filterCategory) filterCategory = 'all';
+  const gridEl = document.getElementById('gallery-card-grid');
+  if (!gridEl) return;
+
+  const filtered = filterCategory === 'all'
+    ? MAGIC_GALLERY_DATA
+    : MAGIC_GALLERY_DATA.filter(function(m) { return m.category === filterCategory; });
+
+  let cardsHtml = '';
+  for (let i = 0; i < filtered.length; i++) {
+    const m = filtered[i];
+    const imgSrc = (typeof MAGIC_IMAGES !== 'undefined' && MAGIC_IMAGES[m.id]) ? MAGIC_IMAGES[m.id] : ('img/' + m.id + '.png');
+    cardsHtml += '<div class="gallery-card">' +
+      '<div class="gallery-card-img-wrap">' +
+        '<img src="' + imgSrc + '" alt="' + m.name + '（' + m.spellName + '）" class="gallery-card-img" loading="lazy">' +
+      '</div>' +
+      '<div class="gallery-card-content">' +
+        '<div class="gallery-card-header">' +
+          '<div class="gallery-card-name-row">' +
+            '<span class="gallery-card-name">' + m.name + '</span>' +
+            '<span class="gallery-card-spell">【' + m.spellName + '】</span>' +
+          '</div>' +
+          '<div class="gallery-card-tags">' +
+            '<span class="gallery-tag" style="background:' + m.categoryColor.bg + '; color:' + m.categoryColor.color + '; border:1px solid ' + m.categoryColor.border + ';">' + m.category + '系</span>' +
+            '<span class="gallery-tag gallery-tag-target">' + m.targetType + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="gallery-card-desc">' + m.desc + '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  gridEl.innerHTML = cardsHtml;
+}
+
+function openMagicGallery() {
+  const modal = document.getElementById('magic-gallery-modal');
+  if (!modal) return;
+
+  // フィルターボタンを「すべて」にリセット
+  document.querySelectorAll('.gallery-filter-btn').forEach(function(btn) {
+    if (btn.dataset.filter === 'all') {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+
+  renderMagicGallery('all');
+  modal.style.display = 'flex';
+
+  const scrollArea = modal.querySelector('.gallery-scroll-area');
+  if (scrollArea) scrollArea.scrollTop = 0;
+}
+
+function closeMagicGallery() {
+  const modal = document.getElementById('magic-gallery-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+// イベントリスナーの初期化
+const btnShowGallery = document.getElementById('btn-show-gallery');
+if (btnShowGallery) {
+  btnShowGallery.addEventListener('click', openMagicGallery);
+}
+
+const btnSettingsGallery = document.getElementById('btn-settings-gallery');
+if (btnSettingsGallery) {
+  btnSettingsGallery.addEventListener('click', function() {
+    const sModal = document.getElementById('settings-modal');
+    if (sModal) sModal.style.display = 'none';
+    openMagicGallery();
+  });
+}
+
+
+if (galleryBtn) {
+  galleryBtn.addEventListener('click', openMagicGallery);
+}
+
+const btnCloseGallery = document.getElementById('btn-close-gallery');
+if (btnCloseGallery) {
+  btnCloseGallery.addEventListener('click', closeMagicGallery);
+}
+
+const magicGalleryModal = document.getElementById('magic-gallery-modal');
+if (magicGalleryModal) {
+  magicGalleryModal.addEventListener('click', function(e) {
+    if (e.target === magicGalleryModal) {
+      closeMagicGallery();
+    }
+  });
+}
+
+document.querySelectorAll('.gallery-filter-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.gallery-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    renderMagicGallery(btn.dataset.filter);
+  });
+});
+
+window.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    const modal = document.getElementById('magic-gallery-modal');
+    if (modal && modal.style.display === 'flex') {
+      closeMagicGallery();
+    }
+  }
+});
+
+window.openMagicGallery = openMagicGallery;
+window.closeMagicGallery = closeMagicGallery;

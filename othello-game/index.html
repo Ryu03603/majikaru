@@ -13,7 +13,7 @@
       font-family: sans-serif;
     }
   </style>
-  <link rel="stylesheet" href="style.css?v=20261121_01">
+  <link rel="stylesheet" href="style.css?v=20261121_07">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 
@@ -21,6 +21,8 @@
   <div class="app-container" style="position: relative;">
     <div
       style="display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 4px; width: 100%;">
+      <button id="gallery-btn" class="secondary-btn small-btn"
+        style="display: none; padding: 4px 12px; font-size: 0.9rem; color: #c084fc; border-color: rgba(192, 132, 252, 0.4); font-weight: 600;">図鑑</button>
       <button id="undo-btn" class="secondary-btn small-btn"
         style="display: none; padding: 4px 12px; font-size: 0.9rem;" disabled>1手戻る</button>
       <button id="surrender-btn" class="secondary-btn small-btn"
@@ -117,14 +119,14 @@
           <div class="setting-section">
             <div class="setting-title">対戦形式</div>
             <div class="radio-button-group">
-              <label class="radio-btn"><input type="radio" name="opponent-type" value="cpu" checked><span>1人で対戦(CPU)</span></label>
-              <label class="radio-btn"><input type="radio" name="opponent-type" value="pvp"><span>2人で対戦(対人)</span></label>
-              <label class="radio-btn"><input type="radio" name="opponent-type" value="online"><span>ネット対戦</span></label>
+              <label class="radio-btn"><input type="radio" name="opponent-type" value="cpu" checked><span>囚人と対戦</span></label>
+              <label class="radio-btn"><input type="radio" name="opponent-type" value="pvp"><span>2人対戦</span></label>
+              <label class="radio-btn"><input type="radio" name="opponent-type" value="online"><span>オンライン対戦</span></label>
             </div>
           </div>
 
           <div class="setting-section" id="online-settings" style="display: none;">
-            <div class="setting-title">ネット対戦設定</div>
+            <div class="setting-title">オンライン対戦設定</div>
             <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
               <div>
                 <label style="color: #cbd5e1; font-size: 0.9rem; margin-bottom: 4px; display: block;">プレイヤー名</label>
@@ -186,6 +188,8 @@
 
           <button id="btn-show-rules" class="secondary-btn small-btn"
             style="width: 100%; margin-top: 12px; color: #fcd34d; border-color: rgba(251, 191, 36, 0.4); margin-bottom: 4px; cursor: pointer;">まじかるモードのルール・魔法一覧</button>
+          <button id="btn-show-gallery" class="primary-btn small-btn"
+            style="width: 100%; margin-top: 6px; background: linear-gradient(135deg, #8b5cf6, #6366f1); border-color: rgba(139, 92, 246, 0.5); font-weight: 600; cursor: pointer;">魔法カード図鑑</button>
           <div style="font-size: 0.75rem; color: #94a3b8; text-align: center; margin-bottom: 24px;">※魔法のネタバレを含みます。</div>
         </div>
         <div class="button-group" id="local-play-buttons">
@@ -335,8 +339,8 @@
           <li><strong style="color: #fcd34d;">氷上メルル（治療）：</strong> 盤面を1ターン前（相手が打つ前）の状態まで時を戻す。さらに、相手が直前に打っていたマスを封鎖する。</li>
         </ul>
 
-        <div style="text-align: center;">
-          <button id="btn-close-rules" class="primary-btn" style="padding: 10px 32px;">閉じる</button>
+        <div style="display: flex; justify-content: center; margin-top: 32px;">
+          <button id="btn-close-rules" class="primary-btn" style="padding: 10px 32px; min-width: 160px; max-width: 220px;">閉じる</button>
         </div>
       </div>
     </div>
@@ -389,9 +393,11 @@
         </div>
         <div id="settings-magic-list-container" style="display: none; margin-top: 24px; text-align: center;">
           <button id="btn-settings-rules" class="secondary-btn small-btn"
-            style="color: #fcd34d; border-color: rgba(251, 191, 36, 0.4); padding: 8px 16px; font-size: 0.95rem; cursor: pointer; width: 100%;">まじかるモードのルール・魔法一覧</button>
+            style="color: #fcd34d; border-color: rgba(251, 191, 36, 0.4); padding: 8px 16px; font-size: 0.95rem; cursor: pointer; width: 100%; margin-bottom: 8px;">まじかるモードのルール・魔法一覧</button>
+          <button id="btn-settings-gallery" class="primary-btn small-btn"
+            style="background: linear-gradient(135deg, #8b5cf6, #6366f1); border-color: rgba(139, 92, 246, 0.5); padding: 8px 16px; font-size: 0.95rem; cursor: pointer; width: 100%; font-weight: 600;">魔法カード図鑑</button>
         </div>
-        <div class="button-group" style="justify-content: center; margin-top: 32px;">
+        <div style="display: flex; justify-content: center; margin-top: 32px;">
           <button id="btn-close-settings" class="primary-btn" style="padding: 10px 32px;">閉じる</button>
         </div>
       </div>
@@ -399,11 +405,41 @@
 
   </div>
 
+    <!-- Fullscreen Magic Card Gallery Modal -->
+    <div id="magic-gallery-modal" class="gallery-modal-overlay" style="display: none;">
+      <div class="gallery-container">
+        <!-- Gallery Header -->
+        <div class="gallery-header">
+          <div class="gallery-title-area">
+            <h2 class="gallery-title">まじかるオセロ 魔法カード図鑑</h2>
+            <p class="gallery-subtitle">全13種類の魔法カードのイラストと効果一覧</p>
+          </div>
+          <button id="btn-close-gallery" class="gallery-close-btn" aria-label="図鑑を閉じる">✕ 閉じる</button>
+        </div>
+
+        <!-- Filter Tabs -->
+        <div class="gallery-filter-bar">
+          <button class="gallery-filter-btn active" data-filter="all">すべて <span class="filter-count">13</span></button>
+          <button class="gallery-filter-btn" data-filter="妨害">妨害系 <span class="filter-count">4</span></button>
+          <button class="gallery-filter-btn" data-filter="盤面操作">盤面操作系 <span class="filter-count">5</span></button>
+          <button class="gallery-filter-btn" data-filter="手札・補助">手札・補助系 <span class="filter-count">3</span></button>
+          <button class="gallery-filter-btn" data-filter="特殊">特殊系 <span class="filter-count">1</span></button>
+        </div>
+
+        <!-- Card Grid Area (Scrollable) -->
+        <div class="gallery-scroll-area">
+          <div class="gallery-grid" id="gallery-card-grid">
+            <!-- Rendered dynamically by script.js -->
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
   <script src="firebase-setup.js?v=20261109_04"></script>
-  <script src="script.js?v=20261121_01"></script>
+  <script src="script.js?v=20261121_07"></script>
 </body>
 
 </html>
