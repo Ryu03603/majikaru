@@ -396,7 +396,7 @@ function showModalAlert(message, callback) {
 }
 
 // 効果音・BGMファイルの事前読み込み
-const bgmSound = new Audio('BGM/rAwTell Owk.mp3');
+const bgmSound = new Audio('BGM/はてなパズル.mp3');
 bgmSound.loop = true;
 bgmSound.volume = 0.05;
 const placeSound = new Audio('SE/ishi.mp3');
