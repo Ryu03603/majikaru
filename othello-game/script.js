@@ -1092,7 +1092,8 @@ function getMagicUnusableReason(spell, isCpuDeck = false) {
     const u = targetDeck.filter(m => {
       if (m.used) return false;
       if (!isCpuDeck && isSpecialMode && opponentType === 'cpu') return true;
-      return !targetGlobal.has(m.spell.id);
+      const trueId = m.spell.name.startsWith('宝生マーゴ→') ? 7 : m.spell.id;
+      return !targetGlobal.has(trueId);
     });
     if (u.length === 0) {
       return "コピーできる対象がいません。";
@@ -1361,7 +1362,7 @@ function executeMagicLogic(magicId, casterIsCpu, index) {
       case 1: { // 桜羽エマ: 相手の魔法をカードごと物理的に1枚打ち消す（実質的に手札を4枚にする）。
         const targetDeck = casterIsCpu ? playerMagics : cpuMagics;
         const targetGlobal = casterIsCpu ? playerUsedMagicIds : cpuUsedMagicIds;
-        const u = targetDeck.map((m, i) => ({ i, id: m.spell.id, used: m.used })).filter(m => {
+        const u = targetDeck.map((m, i) => ({ i, id: (m.spell.name.startsWith('宝生マーゴ→') ? 7 : m.spell.id), used: m.used })).filter(m => {
           if (m.used) return false;
           if (!casterIsCpu && isSpecialMode && opponentType === 'cpu') return true;
           return !targetGlobal.has(m.id);
@@ -1417,13 +1418,15 @@ function executeMagicLogic(magicId, casterIsCpu, index) {
         const u = targetDeck.filter(m => {
           if (m.used) return false;
           if (!casterIsCpu && isSpecialMode && opponentType === 'cpu') return true;
-          return !targetGlobal.has(m.spell.id);
+          const trueId = m.spell.name.startsWith('宝生マーゴ→') ? 7 : m.spell.id;
+          return !targetGlobal.has(trueId);
         });
         if (u.length > 0) {
           const targetCard = u[Math.floor(Math.random() * u.length)];
           targetCard.used = true;
-          // 再ドロー時にも復活しないよう完全に使用済みにする
-          targetGlobal.add(targetCard.spell.id);
+          // 再ドロー時にも復活しないよう完全に使用済みにする（マーゴでコピーしたカードなら7、通常カードなら本来のID）
+          const disabledTrueId = targetCard.spell.name.startsWith('宝生マーゴ→') ? 7 : targetCard.spell.id;
+          targetGlobal.add(disabledTrueId);
           window.lastDisabledCardName = targetCard && targetCard.spell ? targetCard.spell.name : "魔法";
         }
         break;
@@ -1435,11 +1438,13 @@ function executeMagicLogic(magicId, casterIsCpu, index) {
         const u = targetDeck.filter(m => {
           if (m.used) return false;
           if (!casterIsCpu && isSpecialMode && opponentType === 'cpu') return true;
-          return !targetGlobal.has(m.spell.id);
+          const trueId = m.spell.name.startsWith('宝生マーゴ→') ? 7 : m.spell.id;
+          return !targetGlobal.has(trueId);
         });
         if (u.length > 0) {
           const cp = u[Math.floor(Math.random() * u.length)].spell; // コピー元の実体をクローン
-          myDeck[index].spell = { ...cp, name: `宝生マーゴ→${cp.name}` };
+          const baseName = cp.name.replace(/^宝生マーゴ→/, '');
+          myDeck[index].spell = { ...cp, name: `宝生マーゴ→${baseName}` };
           window.lastCopiedCardName = cp.name;
         } else {
           showModalAlert("コピーできる対象がいません。");
@@ -2592,7 +2597,7 @@ function executeCpuMagic(spell, index) {
   let cb = null;
   switch (spell.id) {
     case 1: {
-      const u = playerMagics.map((m, i) => ({ i, id: m.spell.id, used: m.used })).filter(m => !m.used && !playerUsedMagicIds.has(m.id));
+      const u = playerMagics.map((m, i) => ({ i, id: (m.spell.name.startsWith('宝生マーゴ→') ? 7 : m.spell.id), used: m.used })).filter(m => !m.used && !playerUsedMagicIds.has(m.id));
       if (u.length > 0) {
         const chosen = u[Math.floor(Math.random() * u.length)];
         const targetCard = playerMagics[chosen.i];
@@ -2631,23 +2636,36 @@ function executeCpuMagic(spell, index) {
     }
     case 4: { const s = getRandomStone(playerColor) || getRandomStone(cpuColor); if (s) { cb = () => { board[s.r][s.c] = Math.random() < 0.5 ? BLACK : WHITE; specialStones[s.r][s.c] = 'changed'; }; } else { ok = false; } break; }
     case 5: {
-      const u = playerMagics.filter(m => !m.used && !playerUsedMagicIds.has(m.spell.id));
+      const u = playerMagics.filter(m => {
+        if (m.used) return false;
+        const trueId = m.spell.name.startsWith('宝生マーゴ→') ? 7 : m.spell.id;
+        return !playerUsedMagicIds.has(trueId);
+      });
       if (u.length > 0) {
         const chosenCard = u[Math.floor(Math.random() * u.length)];
         window.cpuDisabledCardName = chosenCard && chosenCard.spell ? chosenCard.spell.name : "魔法";
-        cb = () => { chosenCard.used = true; };
+        cb = () => {
+          chosenCard.used = true;
+          const disabledTrueId = chosenCard.spell.name.startsWith('宝生マーゴ→') ? 7 : chosenCard.spell.id;
+          playerUsedMagicIds.add(disabledTrueId);
+        };
       } else { ok = false; }
       break;
     }
     case 6: { const ms = getRandomStone(cpuColor); const os = getRandomStone(playerColor); if (ms && os) { cb = () => { board[ms.r][ms.c] = playerColor; board[os.r][os.c] = cpuColor; specialStones[ms.r][ms.c] = 'swapped'; specialStones[os.r][os.c] = 'swapped'; }; } else { ok = false; } break; }
     case 7: {
-      const u = playerMagics.filter(m => !m.used && !playerUsedMagicIds.has(m.spell.id));
+      const u = playerMagics.filter(m => {
+        if (m.used) return false;
+        const trueId = m.spell.name.startsWith('宝生マーゴ→') ? 7 : m.spell.id;
+        return !playerUsedMagicIds.has(trueId);
+      });
       if (u.length > 0) {
         const chosenCard = u[Math.floor(Math.random() * u.length)];
         const cp = chosenCard.spell;
         window.cpuCopiedCardName = cp ? cp.name : "魔法";
         cb = () => {
-          cpuMagics[index].spell = { ...cp, name: `宝生マーゴ→${cp.name}` };
+          const baseName = cp.name.replace(/^宝生マーゴ→/, '');
+          cpuMagics[index].spell = { ...cp, name: `宝生マーゴ→${baseName}` };
         };
       } else { ok = false; }
       break;
